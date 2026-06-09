@@ -1,0 +1,5 @@
+node_modules/
+.tmp/
+.pi/
+.agents/
+.DS_Store
