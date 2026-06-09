@@ -10,15 +10,21 @@ function check(condition, message) {
 }
 
 const pkg = JSON.parse(await readFile("package.json", "utf8"));
-check(pkg.packageManager?.startsWith("bun@"), "package.json must declare Bun as packageManager");
-check(pkg.engines?.bun, "package.json must declare the supported Bun engine");
+check(pkg.name === "@sjunepark/ytm", "package.json must use the configured npm package name");
+check(pkg.packageManager?.startsWith("bun@"), "package.json must declare Bun as the development package manager");
+check(pkg.engines?.node, "package.json must declare the supported Node engine for npm users");
+check(pkg.publishConfig?.access === "public", "scoped npm package must publish with public access");
 check(pkg.scripts?.cli === "bun run src/cli.js", "package.json must expose a Bun source-run cli script");
-check(pkg.bin && pkg.bin["ytm"] === "./dist/cli.js", "package.json must expose bin.ytm -> ./dist/cli.js");
+check(pkg.bin && pkg.bin["ytm"] === "dist/cli.js", "package.json must expose bin.ytm -> dist/cli.js");
 check(pkg.exports?.["./toolset"]?.import === "./dist/toolset.js", "package.json must export ./toolset import surface");
 check(pkg.exports?.["./toolset"]?.types === "./dist/toolset.d.ts", "package.json must export ./toolset types");
+check(pkg.exports?.["./package.json"] === "./package.json", "package.json must export ./package.json metadata");
 check(existsSync("dist/cli.js"), "dist/cli.js must exist; run bun run build");
 check(existsSync("dist/toolset.js"), "dist/toolset.js must exist; run bun run build");
 check(existsSync("dist/toolset.d.ts"), "dist/toolset.d.ts must exist; run bun run build");
+const cliSource = await readFile("dist/cli.js", "utf8");
+check(cliSource.startsWith("#!/usr/bin/env node"), "dist/cli.js must use the Node shebang for npm bin execution");
+const nodeCommand = process.env.NODE || "node";
 
 const toolset = createKisnetYtmToolset();
 for (const method of ["help", "listOperations", "getCommandHelp", "validateInput", "execute", "serializeError"]) {
@@ -42,9 +48,9 @@ check(!invalid.valid && invalid.error.code === "invalid_parameter" && invalid.er
 const valid = toolset.validateInput("matrix", { baseDate: "2026.06.08", kind: "10" });
 check(valid.valid && valid.normalizedInput.baseDate === "2026-06-08", "valid input must normalize baseDate");
 
-const help = spawnSync(process.execPath, ["dist/cli.js", "--help"], { encoding: "utf8" });
+const help = spawnSync(nodeCommand, ["dist/cli.js", "--help"], { encoding: "utf8" });
 check(help.status === 0 && help.stdout.includes("matrix"), "CLI --help must succeed and list commands");
-const bad = spawnSync(process.execPath, ["dist/cli.js", "matrix", "--kind", "국채"], { encoding: "utf8" });
+const bad = spawnSync(nodeCommand, ["dist/cli.js", "matrix", "--kind", "국채"], { encoding: "utf8" });
 check(bad.status !== 0, "invalid CLI command must exit non-zero");
 check(bad.stderr.includes("matrix") && bad.stderr.includes("10 = 국채"), "invalid CLI command must print command help to stderr");
 try {
@@ -53,7 +59,7 @@ try {
 } catch {
   failures.push("invalid CLI command stdout must be JSON");
 }
-const list = spawnSync(process.execPath, ["dist/cli.js", "kinds", "--format", "json"], { encoding: "utf8" });
+const list = spawnSync(nodeCommand, ["dist/cli.js", "kinds", "--format", "json"], { encoding: "utf8" });
 check(list.status === 0, "safe kinds command must exit zero");
 try {
   const payload = JSON.parse(list.stdout);
@@ -63,7 +69,7 @@ try {
 }
 
 if (process.env.KISNET_SMOKE_NETWORK === "1") {
-  const smoke = spawnSync(process.execPath, ["dist/cli.js", "matrix", "--base-date", "2026-06-08", "--kind", "국채", "--format", "json"], { encoding: "utf8", timeout: 20000 });
+  const smoke = spawnSync(nodeCommand, ["dist/cli.js", "matrix", "--base-date", "2026-06-08", "--kind", "국채", "--format", "json"], { encoding: "utf8", timeout: 20000 });
   check(smoke.status === 0, `network smoke must exit zero: ${smoke.stderr || smoke.stdout}`);
   if (smoke.status === 0) {
     const payload = JSON.parse(smoke.stdout);

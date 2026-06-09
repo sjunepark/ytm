@@ -1,6 +1,13 @@
 {
   "version": 1,
   "skills": {
+    "release-please-release": {
+      "source": "sjunepark/custom-skills",
+      "ref": "main",
+      "sourceType": "github",
+      "skillPath": "skills/release-please-release/SKILL.md",
+      "computedHash": "a0be85db7646e6e09075df1627e601f19b72acd440d9c19bc90b75dde48373b1"
+    },
     "tool-surface-spec": {
       "source": "open-creo/skills",
       "ref": "main",

@@ -343,7 +343,7 @@ function normalizeMatrixRow(row, kind) {
 async function postNexacroXml(endpoint, body, context = {}) {
   const fetchImpl = context.fetch || globalThis.fetch;
   if (typeof fetchImpl !== "function") {
-    throw new KisnetYtmError({ code: "invalid_request", reason: "No fetch implementation is available. Use Bun 1.3+ or pass context.fetch.", recoveryHint: "Run this package with Bun 1.3 or newer.", recoveryAction: "inspect_tool_help", recoverable: true, retryable: false });
+    throw new KisnetYtmError({ code: "invalid_request", reason: "No fetch implementation is available. Use Node 20.18.1+ or pass context.fetch.", recoveryHint: "Run this package with Node 20.18.1 or newer.", recoveryAction: "inspect_tool_help", recoverable: true, retryable: false });
   }
   const response = await fetchImpl(`${SOURCE_BASE_URL}${endpoint}`, {
     method: "POST",

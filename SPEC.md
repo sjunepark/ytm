@@ -42,7 +42,7 @@ ytm kinds [--base-date <기준일>] [--format json|csv|tsv] [--pretty]
 
 ### Toolset SDK
 
-`kisnet-ytm/toolset` exports `createKisnetYtmToolset()` with `help`, `listOperations`, `getOperation`, `getCommandHelp`, `validateInput`, `execute`, and `serializeError`.
+`@sjunepark/ytm/toolset` exports `createKisnetYtmToolset()` with `help`, `listOperations`, `getOperation`, `getCommandHelp`, `validateInput`, `execute`, and `serializeError`.
 
 ## Result shape
 

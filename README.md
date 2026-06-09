@@ -21,20 +21,24 @@ The tool reproduces that deterministic POST shape directly instead of driving th
 
 ## CLI
 
-Requires Bun 1.3 or newer.
+The published npm CLI requires Node 20.18.1 or newer. Local development uses Bun 1.3 or newer.
 
 ```sh
 # Source-run CLI, no build needed
-bun cli
-bun cli --help
-bun cli matrix --help
-bun cli matrix --base-date 2026-06-08 --kind 국채 --format json --pretty
-bun cli kinds --format tsv
+bun run cli
+bun run cli --help
+bun run cli matrix --help
+bun run cli matrix --base-date 2026-06-08 --kind 국채 --format json --pretty
+bun run cli kinds --format tsv
 
 # Built CLI
 bun run build
-bun dist/cli.js --help
-bun dist/cli.js matrix --base-date 2026-06-08 --kind 국채 --format json --pretty
+node dist/cli.js --help
+node dist/cli.js matrix --base-date 2026-06-08 --kind 국채 --format json --pretty
+
+# Published package
+npx @sjunepark/ytm --help
+npm install --global @sjunepark/ytm
 
 # Installed/link binary name
 ytm --help
@@ -44,7 +48,7 @@ ytm matrix --base-date 2026-06-08 --kind 국채
 Use `kinds` to see accepted `kind` / `종류` values. Command help is the authoritative menu for current inputs:
 
 ```sh
-bun cli <command> --help
+ytm <command> --help
 ```
 
 Default output is one JSON object. Successful `csv` and `tsv` commands print tabular rows. Failures always print one JSON object and exit non-zero.
@@ -89,7 +93,7 @@ Known inspected `종류` values:
 ## Toolset SDK
 
 ```js
-import { createKisnetYtmToolset } from "kisnet-ytm/toolset";
+import { createKisnetYtmToolset } from "@sjunepark/ytm/toolset";
 
 const toolset = createKisnetYtmToolset();
 const validation = toolset.validateInput("matrix", {
