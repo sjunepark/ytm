@@ -124,9 +124,25 @@ jobs:
         run: bun run build
 
       - name: Publish npm package
+        shell: bash
         run: |
           if npm view "$PACKAGE_NAME@$PACKAGE_VERSION" version >/dev/null 2>&1; then
             echo "$PACKAGE_NAME@$PACKAGE_VERSION is already published; skipping npm publish."
-          else
-            npm publish --access public
+            exit 0
           fi
+
+          set +e
+          npm publish --access public 2>&1 | tee npm-publish.log
+          publish_status=${PIPESTATUS[0]}
+          set -e
+
+          if [ "$publish_status" -eq 0 ]; then
+            exit 0
+          fi
+
+          if grep -qi "previously published versions: $PACKAGE_VERSION" npm-publish.log; then
+            echo "$PACKAGE_NAME@$PACKAGE_VERSION is already published; skipping npm publish."
+            exit 0
+          fi
+
+          exit "$publish_status"
