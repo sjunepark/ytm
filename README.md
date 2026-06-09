@@ -1,6 +1,6 @@
-# kisnet-ytm
+# ytm
 
-Deterministic CLI plus runtime-neutral `./toolset` SDK for KIS-NET YTM Matrix lookups from <https://kis-net.kr/kisnet_mobile/index.html>.
+`ytm` is a deterministic CLI plus runtime-neutral `./toolset` SDK for KIS-NET YTM Matrix lookups from <https://kis-net.kr/kisnet_mobile/index.html>.
 
 The agent-facing contract is English, while official KIS-NET terms such as `기준일`, `종류`, `국채`, and `회사채(무보증)` are preserved.
 
@@ -24,18 +24,34 @@ The tool reproduces that deterministic POST shape directly instead of driving th
 Requires Bun 1.3 or newer.
 
 ```sh
+# Source-run CLI, no build needed
+bun cli
+bun cli --help
+bun cli matrix --help
+bun cli matrix --base-date 2026-06-08 --kind 국채 --format json --pretty
+bun cli kinds --format tsv
+
+# Built CLI
 bun run build
 bun dist/cli.js --help
-bun dist/cli.js lookup-ytm-matrix --base-date 2026-06-08 --kind 국채 --format json --pretty
-bun dist/cli.js lookup-ytm-matrix --base-date 20260608 --kind 10 --format csv
-bun dist/cli.js list-ytm-sorts --format tsv
+bun dist/cli.js matrix --base-date 2026-06-08 --kind 국채 --format json --pretty
+
+# Installed/link binary name
+ytm --help
+ytm matrix --base-date 2026-06-08 --kind 국채
+```
+
+Use `kinds` to see accepted `kind` / `종류` values. Command help is the authoritative menu for current inputs:
+
+```sh
+bun cli <command> --help
 ```
 
 Default output is one JSON object. Successful `csv` and `tsv` commands print tabular rows. Failures always print one JSON object and exit non-zero.
 
 ## Operations
 
-### `lookup-ytm-matrix`
+### `matrix`
 
 Input:
 
@@ -48,7 +64,7 @@ Input:
 
 Result includes resolved `kind`, tenor labels, rows by `적용대상채권`, numeric yields, raw source cell text, and source request metadata. Source `-` cells become `null` in `yields` and remain `-` in `yieldText`.
 
-### `list-ytm-sorts`
+### `kinds`
 
 Input:
 
@@ -76,12 +92,12 @@ Known inspected `종류` values:
 import { createKisnetYtmToolset } from "kisnet-ytm/toolset";
 
 const toolset = createKisnetYtmToolset();
-const validation = toolset.validateInput("lookup-ytm-matrix", {
+const validation = toolset.validateInput("matrix", {
   baseDate: "2026-06-08",
   kind: "국채"
 });
 if (!validation.valid) throw validation.error;
-const result = await toolset.execute("lookup-ytm-matrix", validation.normalizedInput);
+const result = await toolset.execute("matrix", validation.normalizedInput);
 ```
 
 The SDK exposes `help()`, `listOperations()`, `getOperation()`, `getCommandHelp()`, `validateInput()`, `execute()`, and `serializeError()`.

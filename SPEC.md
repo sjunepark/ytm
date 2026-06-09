@@ -32,8 +32,8 @@ The inspected form is `rateinfo::YtmMatrix.xfdl`.
 ### CLI
 
 ```sh
-kisnet-ytm lookup-ytm-matrix --base-date <기준일> --kind <종류> [--format json|csv|tsv] [--pretty]
-kisnet-ytm list-ytm-sorts [--base-date <기준일>] [--format json|csv|tsv] [--pretty]
+ytm matrix --base-date <기준일> --kind <종류> [--format json|csv|tsv] [--pretty]
+ytm kinds [--base-date <기준일>] [--format json|csv|tsv] [--pretty]
 ```
 
 - `json` is default and prints one JSON object.
@@ -46,7 +46,7 @@ kisnet-ytm list-ytm-sorts [--base-date <기준일>] [--format json|csv|tsv] [--p
 
 ## Result shape
 
-`lookup-ytm-matrix` returns:
+`matrix` returns:
 
 - `baseDate`: normalized `YYYY-MM-DD`
 - `kind`: `{ code, name }`

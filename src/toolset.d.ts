@@ -63,7 +63,7 @@ export interface ListYtmSortsResult {
 }
 
 export interface KisnetYtmToolset {
-  id: "kisnet-ytm";
+  id: "ytm";
   label: string;
   description: string;
   help(): string;
@@ -71,8 +71,8 @@ export interface KisnetYtmToolset {
   getOperation(name: string): OperationSpec | undefined;
   getCommandHelp(name: string): string | undefined;
   validateInput(operationName: string, input: unknown): ValidationResult;
-  execute(operationName: "lookup-ytm-matrix", input: { baseDate: string; kind: string | number }, context?: ToolRunContext): Promise<LookupYtmMatrixResult>;
-  execute(operationName: "list-ytm-sorts", input?: { baseDate?: string }, context?: ToolRunContext): Promise<ListYtmSortsResult>;
+  execute(operationName: "matrix", input: { baseDate: string; kind: string | number }, context?: ToolRunContext): Promise<LookupYtmMatrixResult>;
+  execute(operationName: "kinds", input?: { baseDate?: string }, context?: ToolRunContext): Promise<ListYtmSortsResult>;
   execute(operationName: string, input: unknown, context?: ToolRunContext): Promise<unknown>;
   serializeError(error: unknown): ValidationErrorDetails | Record<string, unknown>;
 }

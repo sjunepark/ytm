@@ -33,7 +33,7 @@ const TENORS = [
 
 const operationSpecs = [
   {
-    name: "lookup-ytm-matrix",
+    name: "matrix",
     label: "Lookup KIS-NET YTM Matrix",
     description: "Fetch YTM Matrix rows from KIS-NET for a 기준일 and 종류. The source-native 종류 may be a Korean label such as 국채 or a source code such as 10.",
     requiredInputKeys: ["baseDate", "kind"],
@@ -74,7 +74,7 @@ const operationSpecs = [
     resultSummary: "Returns the resolved 종류, tenor labels, one row per 적용대상채권, numeric yield values, raw source cells, and source request metadata."
   },
   {
-    name: "list-ytm-sorts",
+    name: "kinds",
     label: "List KIS-NET YTM 종류 values",
     description: "List source 종류 codes and Korean labels for the KIS-NET YTM Matrix. When baseDate is supplied, values are refreshed from KIS-NET's init endpoint; otherwise the inspected source list is returned without a network request.",
     requiredInputKeys: [],
@@ -118,7 +118,7 @@ export class KisnetYtmError extends Error {
 
 export function createKisnetYtmToolset(options = {}) {
   return {
-    id: "kisnet-ytm",
+    id: "ytm",
     label: "KIS-NET YTM Matrix",
     description: "Deterministic lookup tool for KIS-NET YTM Matrix data using 기준일 and 종류.",
     help() {
@@ -126,10 +126,13 @@ export function createKisnetYtmToolset(options = {}) {
         "KIS-NET YTM Matrix toolset",
         "",
         "Operations:",
-        "  lookup-ytm-matrix: fetch YTM Matrix rows for a 기준일 and 종류.",
-        "  list-ytm-sorts: list accepted 종류 codes and Korean labels.",
+        "  matrix: fetch YTM Matrix rows for a 기준일 and 종류.",
+        "  kinds: list accepted 종류 codes and Korean labels.",
         "",
-        "Source terms are preserved where official: 기준일, 종류, 국채, 지방채, 특수채, 통안채, 은행채, 기타금융채, 회사채(무보증).",
+        "Accepted 종류 values:",
+        ...formatKindsForHelp().map((line) => `  ${line}`),
+        "",
+        "Source terms are preserved where official: 기준일, 종류, and 적용대상채권.",
         "Use validateInput(operationName, input) before execute when integrating in-process."
       ].join("\n");
     },
@@ -140,18 +143,20 @@ export function createKisnetYtmToolset(options = {}) {
       return operationSpecs.find((spec) => spec.name === name);
     },
     getCommandHelp(name) {
-      if (name === "lookup-ytm-matrix") {
+      if (name === "matrix") {
         return [
-          "lookup-ytm-matrix",
+          "matrix",
           "  Input JSON: { \"baseDate\": \"2026-06-08\", \"kind\": \"국채\" }",
           "  baseDate maps to 기준일 and accepts YYYY-MM-DD, YYYY.MM.DD, or YYYYMMDD.",
-          "  kind maps to 종류 and accepts a Korean label or source code.",
+          "  kind maps to 종류 and accepts one of these Korean labels or source codes:",
+          ...formatKindsForHelp().map((line) => `    ${line}`),
+          "  Run kinds to print this list as JSON, CSV, or TSV.",
           "  Result rows include 적용대상채권 and tenors 3M through 50Y."
         ].join("\n");
       }
-      if (name === "list-ytm-sorts") {
+      if (name === "kinds") {
         return [
-          "list-ytm-sorts",
+          "kinds",
           "  Input JSON: {} or { \"baseDate\": \"2026-06-08\" }",
           "  Returns accepted 종류 source codes and Korean labels."
         ].join("\n");
@@ -165,8 +170,8 @@ export function createKisnetYtmToolset(options = {}) {
       const validation = validateInput(operationName, input);
       if (!validation.valid) throw new KisnetYtmError(validation.error);
       const safeInput = validation.normalizedInput;
-      if (operationName === "lookup-ytm-matrix") return lookupYtmMatrix(safeInput, { ...context, ...options });
-      if (operationName === "list-ytm-sorts") return listYtmSorts(safeInput, { ...context, ...options });
+      if (operationName === "matrix") return lookupYtmMatrix(safeInput, { ...context, ...options });
+      if (operationName === "kinds") return listYtmSorts(safeInput, { ...context, ...options });
       throw new KisnetYtmError(unknownOperationError(operationName));
     },
     serializeError(error) {
@@ -208,9 +213,9 @@ export function validateInput(operationName, input) {
       configurable: true
     });
   }
-  if (operationName === "lookup-ytm-matrix") {
+  if (operationName === "matrix") {
     if (!["string", "number"].includes(typeof input.kind)) {
-      return { valid: false, error: validationError({ operationName, code: "invalid_parameter", parameter: "kind", reason: "kind must be a 종류 label or source code.", expected: "string or number", actual: safeActual(input.kind), exampleInput: spec.examples[0].input, recoveryHint: "Use list-ytm-sorts to inspect accepted 종류 values, then retry with a code like 10 or label like 국채." }) };
+      return { valid: false, error: validationError({ operationName, code: "invalid_parameter", parameter: "kind", reason: "kind must be a 종류 label or source code.", expected: "string or number", actual: safeActual(input.kind), exampleInput: spec.examples[0].input, recoveryHint: "Use kinds to inspect accepted 종류 values, then retry with a code like 10 or label like 국채." }) };
     }
     normalized.kind = String(input.kind).trim();
   }
@@ -225,13 +230,13 @@ async function lookupYtmMatrix(input, context) {
     throw new KisnetYtmError({
       ok: false,
       code: "invalid_parameter",
-      operationName: "lookup-ytm-matrix",
+      operationName: "matrix",
       parameter: "kind",
       reason: `Unknown 종류: ${input.kind}.`,
       expected: kindsResult.kinds,
       actual: input.kind,
       exampleInput: { baseDate: input.baseDate, kind: kindsResult.kinds[0]?.name || "국채" },
-      recoveryHint: "Use list-ytm-sorts to inspect accepted 종류 values, then retry with a listed code or label.",
+      recoveryHint: "Use kinds to inspect accepted 종류 values, then retry with a listed code or label.",
       recoveryAction: "inspect_command_help",
       recoverable: true,
       retryable: false
@@ -313,6 +318,10 @@ function resolveKind(inputKind, kinds) {
   return kinds.find((kind) => kind.code === value || kind.name === value || kind.name.replace(/\s+/g, "") === value.replace(/\s+/g, ""));
 }
 
+function formatKindsForHelp() {
+  return STATIC_KINDS.map((kind) => `${kind.code} = ${kind.name}`);
+}
+
 function normalizeMatrixRow(row, kind) {
   const yields = {};
   const yieldText = {};
@@ -341,7 +350,7 @@ async function postNexacroXml(endpoint, body, context = {}) {
     headers: {
       "content-type": "text/xml; charset=UTF-8",
       "accept": "text/xml, */*",
-      "user-agent": "kisnet-ytm/0.1.0"
+      "user-agent": "ytm/0.1.0"
     },
     body,
     signal: context.signal
@@ -423,7 +432,7 @@ function unknownOperationError(operationName) {
     reason: `Unknown operation: ${operationName}.`,
     expected: operationSpecs.map((spec) => spec.name),
     actual: safeActual(operationName),
-    exampleInput: { operationName: "lookup-ytm-matrix", input: { baseDate: "2026-06-08", kind: "국채" } },
+    exampleInput: { operationName: "matrix", input: { baseDate: "2026-06-08", kind: "국채" } },
     recoveryHint: "Inspect tool help and retry with a listed operation name."
   });
 }

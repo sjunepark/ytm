@@ -27,12 +27,13 @@ async function main(argv) {
   }
 
   if (!toolset.getOperation(command)) {
+    writeRootHelpDiagnostic();
     writeJsonFailure(toolset.serializeError(new Error(`Unknown command: ${command}`)), {
       code: "invalid_request",
       reason: `Unknown command: ${command}.`,
       expected: toolset.listOperations().map((operation) => operation.name),
       actual: command,
-      recoveryHint: "Run kisnet-ytm --help and retry with a listed command.",
+      recoveryHint: "Run ytm --help and retry with a listed command.",
       recoveryAction: "inspect_tool_help",
       recoverable: true,
       retryable: false
@@ -43,6 +44,7 @@ async function main(argv) {
 
   const parsed = parseArgs(command, argv.slice(1));
   if (!parsed.ok) {
+    writeCommandHelpDiagnostic(command);
     writeJsonFailure(parsed.error);
     process.exitCode = 2;
     return;
@@ -50,6 +52,7 @@ async function main(argv) {
 
   const validation = toolset.validateInput(command, parsed.input);
   if (!validation.valid) {
+    writeCommandHelpDiagnostic(command);
     writeJsonFailure(validation.error);
     process.exitCode = 2;
     return;
@@ -60,20 +63,39 @@ async function main(argv) {
 }
 
 function printHelp() {
-  process.stdout.write(`${toolset.help()}\n\nCLI usage:\n  kisnet-ytm lookup-ytm-matrix --base-date <기준일> --kind <종류> [--format json|csv|tsv] [--pretty]\n  kisnet-ytm list-ytm-sorts [--base-date <기준일>] [--format json|csv|tsv] [--pretty]\n  kisnet-ytm help <command>\n\nOutput:\n  json is the default and prints one JSON object. csv and tsv print tabular success rows. Failures always print one JSON object and exit non-zero.\n`);
+  process.stdout.write(formatRootHelp());
 }
 
 function printCommandHelp(command) {
-  const help = toolset.getCommandHelp(command);
+  const help = formatCommandHelp(command);
   if (!help) {
-    process.stdout.write(`Unknown command: ${command}\nRun kisnet-ytm --help for available commands.\n`);
+    process.stdout.write(`Unknown command: ${command}\nRun ytm --help for available commands.\n`);
     process.exitCode = 2;
     return;
   }
-  const cli = command === "lookup-ytm-matrix"
-    ? "kisnet-ytm lookup-ytm-matrix --base-date 2026-06-08 --kind 국채 --format json"
-    : "kisnet-ytm list-ytm-sorts --base-date 2026-06-08 --format json";
-  process.stdout.write(`${help}\n\nCLI example:\n  ${cli}\n`);
+  process.stdout.write(help);
+}
+
+function writeRootHelpDiagnostic() {
+  process.stderr.write(`\n${formatRootHelp()}`);
+}
+
+function writeCommandHelpDiagnostic(command) {
+  const help = formatCommandHelp(command);
+  if (help) process.stderr.write(`\n${help}`);
+}
+
+function formatRootHelp() {
+  return `${toolset.help()}\n\nCLI usage:\n  ytm matrix --base-date <기준일> --kind <종류> [--format json|csv|tsv] [--pretty]\n  ytm kinds [--base-date <기준일>] [--format json|csv|tsv] [--pretty]\n  ytm help <command>\n\nOutput:\n  json is the default and prints one JSON object. csv and tsv print tabular success rows. Failures always print one JSON object to stdout and exit non-zero. Help diagnostics for invalid invocations are written to stderr.\n`;
+}
+
+function formatCommandHelp(command) {
+  const help = toolset.getCommandHelp(command);
+  if (!help) return undefined;
+  const cli = command === "matrix"
+    ? "ytm matrix --base-date 2026-06-08 --kind 국채 --format json"
+    : "ytm kinds --base-date 2026-06-08 --format json";
+  return `${help}\n\nCLI example:\n  ${cli}\n`;
 }
 
 function parseArgs(command, args) {
@@ -127,8 +149,8 @@ function cliError(operationName, code, parameter, reason, expected, actual) {
     reason,
     expected,
     actual,
-    exampleInput: operationName === "lookup-ytm-matrix" ? { baseDate: "2026-06-08", kind: "국채" } : { baseDate: "2026-06-08" },
-    recoveryHint: `Run kisnet-ytm help ${operationName} and retry with supported options.`,
+    exampleInput: operationName === "matrix" ? { baseDate: "2026-06-08", kind: "국채" } : { baseDate: "2026-06-08" },
+    recoveryHint: `Run ytm help ${operationName} and retry with supported options.`,
     recoveryAction: "inspect_command_help",
     recoverable: true,
     retryable: false
@@ -141,7 +163,7 @@ function renderSuccess(operation, result, format, pretty) {
     process.stdout.write(`${JSON.stringify(envelope, null, pretty ? 2 : 0)}\n`);
     return;
   }
-  if (operation === "lookup-ytm-matrix") {
+  if (operation === "matrix") {
     process.stdout.write(renderMatrixTable(result, format));
     return;
   }
