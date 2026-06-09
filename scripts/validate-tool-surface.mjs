@@ -10,12 +10,14 @@ function check(condition, message) {
 }
 
 const pkg = JSON.parse(await readFile("package.json", "utf8"));
+check(pkg.packageManager?.startsWith("bun@"), "package.json must declare Bun as packageManager");
+check(pkg.engines?.bun, "package.json must declare the supported Bun engine");
 check(pkg.bin && pkg.bin["kisnet-ytm"] === "./dist/cli.js", "package.json must expose bin.kisnet-ytm -> ./dist/cli.js");
 check(pkg.exports?.["./toolset"]?.import === "./dist/toolset.js", "package.json must export ./toolset import surface");
 check(pkg.exports?.["./toolset"]?.types === "./dist/toolset.d.ts", "package.json must export ./toolset types");
-check(existsSync("dist/cli.js"), "dist/cli.js must exist; run npm run build");
-check(existsSync("dist/toolset.js"), "dist/toolset.js must exist; run npm run build");
-check(existsSync("dist/toolset.d.ts"), "dist/toolset.d.ts must exist; run npm run build");
+check(existsSync("dist/cli.js"), "dist/cli.js must exist; run bun run build");
+check(existsSync("dist/toolset.js"), "dist/toolset.js must exist; run bun run build");
+check(existsSync("dist/toolset.d.ts"), "dist/toolset.d.ts must exist; run bun run build");
 
 const toolset = createKisnetYtmToolset();
 for (const method of ["help", "listOperations", "getCommandHelp", "validateInput", "execute", "serializeError"]) {

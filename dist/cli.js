@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 import { createKisnetYtmToolset } from "./toolset.js";
 
 const toolset = createKisnetYtmToolset();

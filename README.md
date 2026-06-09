@@ -21,12 +21,14 @@ The tool reproduces that deterministic POST shape directly instead of driving th
 
 ## CLI
 
+Requires Bun 1.3 or newer.
+
 ```sh
-npm run build
-node dist/cli.js --help
-node dist/cli.js lookup-ytm-matrix --base-date 2026-06-08 --kind 국채 --format json --pretty
-node dist/cli.js lookup-ytm-matrix --base-date 20260608 --kind 10 --format csv
-node dist/cli.js list-ytm-sorts --format tsv
+bun run build
+bun dist/cli.js --help
+bun dist/cli.js lookup-ytm-matrix --base-date 2026-06-08 --kind 국채 --format json --pretty
+bun dist/cli.js lookup-ytm-matrix --base-date 20260608 --kind 10 --format csv
+bun dist/cli.js list-ytm-sorts --format tsv
 ```
 
 Default output is one JSON object. Successful `csv` and `tsv` commands print tabular rows. Failures always print one JSON object and exit non-zero.
@@ -87,9 +89,9 @@ The SDK exposes `help()`, `listOperations()`, `getOperation()`, `getCommandHelp(
 ## Validation
 
 ```sh
-npm run build
-npm run validate
-KISNET_SMOKE_NETWORK=1 npm run validate
+bun run build
+bun run validate
+KISNET_SMOKE_NETWORK=1 bun run validate
 ```
 
 Structured validation failures include `code`, `operationName`, `parameter`, `expected`, safe `actual`, `exampleInput`, `recoveryHint`, `recoveryAction`, `recoverable`, and retry metadata where applicable.
