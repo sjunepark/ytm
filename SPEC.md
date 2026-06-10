@@ -32,13 +32,15 @@ The inspected form is `rateinfo::YtmMatrix.xfdl`.
 ### CLI
 
 ```sh
-ytm matrix --base-date <기준일> --kind <종류> [--format json|csv|tsv] [--pretty]
+ytm matrix --base-date <기준일> --kind <종류> [--fallback previous-available] [--lookback-days <days>] [--format json|csv|tsv] [--pretty]
 ytm kinds [--base-date <기준일>] [--format json|csv|tsv] [--pretty]
 ```
 
 - `json` is default and prints one JSON object.
 - Successful `csv` and `tsv` output is tabular.
 - Failures always print one JSON object and exit non-zero.
+- By default, `matrix` is exact-date: it tries the requested `baseDate` once and fails with `source_data_unavailable` if KIS-NET returns no rows.
+- With `--fallback previous-available`, `matrix` still tries the requested date first, then probes prior calendar dates up to `--lookback-days` until KIS-NET returns rows.
 
 ### Toolset SDK
 
@@ -48,7 +50,9 @@ ytm kinds [--base-date <기준일>] [--format json|csv|tsv] [--pretty]
 
 `matrix` returns:
 
-- `baseDate`: normalized `YYYY-MM-DD`
+- `baseDate`: normalized `YYYY-MM-DD` that produced rows
+- `requestedBaseDate`: normalized requested `YYYY-MM-DD`
+- `dateResolution`: fallback policy, attempted dates, resolved date, and whether fallback was used
 - `kind`: `{ code, name }`
 - `tenors`: `3M`, `6M`, `9M`, `1Y`, `1.5Y`, `2Y`, `2.5Y`, `3Y`, `5Y`, `7Y`, `10Y`, `15Y`, `20Y`, `30Y`, `50Y`
 - `rows`: one per `적용대상채권`, with `pricingGroupCode`, `pricingGroupName`, numeric `yields`, raw `yieldText`, and raw source columns

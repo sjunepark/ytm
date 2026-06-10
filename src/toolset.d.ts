@@ -17,7 +17,7 @@ export interface OperationSpec {
 
 export interface ValidationErrorDetails {
   ok: false;
-  code: "missing_parameter" | "invalid_parameter" | "unknown_parameter" | "invalid_request";
+  code: "missing_parameter" | "invalid_parameter" | "unknown_parameter" | "invalid_request" | "source_data_unavailable";
   operationName?: string;
   parameter?: string;
   reason: string;
@@ -25,7 +25,7 @@ export interface ValidationErrorDetails {
   actual?: unknown;
   exampleInput?: unknown;
   recoveryHint: string;
-  recoveryAction: "inspect_tool_help" | "inspect_command_help";
+  recoveryAction: "inspect_tool_help" | "inspect_command_help" | "use_previous_available_fallback" | "try_nearby_business_day";
   recoverable: boolean;
   retryable?: boolean;
 }
@@ -48,8 +48,19 @@ export interface YtmMatrixRow {
   raw: Record<string, string>;
 }
 
+export interface DateResolution {
+  mode: "exact" | "previous-available";
+  requestedBaseDate: string;
+  resolvedBaseDate: string;
+  usedFallback: boolean;
+  attemptedDates: string[];
+  lookbackDays: number;
+}
+
 export interface LookupYtmMatrixResult {
   baseDate: string;
+  requestedBaseDate: string;
+  dateResolution: DateResolution;
   kind: YtmKind;
   tenors: string[];
   rows: YtmMatrixRow[];
@@ -71,7 +82,7 @@ export interface KisnetYtmToolset {
   getOperation(name: string): OperationSpec | undefined;
   getCommandHelp(name: string): string | undefined;
   validateInput(operationName: string, input: unknown): ValidationResult;
-  execute(operationName: "matrix", input: { baseDate: string; kind: string | number }, context?: ToolRunContext): Promise<LookupYtmMatrixResult>;
+  execute(operationName: "matrix", input: { baseDate: string; kind: string | number; fallback?: "previous-available"; lookbackDays?: number }, context?: ToolRunContext): Promise<LookupYtmMatrixResult>;
   execute(operationName: "kinds", input?: { baseDate?: string }, context?: ToolRunContext): Promise<ListYtmSortsResult>;
   execute(operationName: string, input: unknown, context?: ToolRunContext): Promise<unknown>;
   serializeError(error: unknown): ValidationErrorDetails | Record<string, unknown>;

@@ -29,6 +29,7 @@ bun run cli
 bun run cli --help
 bun run cli matrix --help
 bun run cli matrix --base-date 2026-06-08 --kind 국채 --format json --pretty
+bun run cli matrix --base-date 2026-06-07 --kind 국채 --fallback previous-available --lookback-days 10 --format json --pretty
 bun run cli kinds --format tsv
 
 # Built CLI
@@ -43,6 +44,7 @@ npm install --global @sjunepark/ytm
 # Installed/link binary name
 ytm --help
 ytm matrix --base-date 2026-06-08 --kind 국채
+ytm matrix --base-date 2026-06-07 --kind 국채 --fallback previous-available
 ```
 
 Use `kinds` to see accepted `kind` / `종류` values. Command help is the authoritative menu for current inputs:
@@ -82,8 +84,10 @@ Input:
 
 - `baseDate` maps to `기준일`. Accepted forms: `YYYY-MM-DD`, `YYYY.MM.DD`, `YYYYMMDD`.
 - `kind` maps to `종류`. Use a Korean label or source code.
+- By default the requested `baseDate` is exact: if KIS-NET returns no rows, the command fails with `source_data_unavailable` and asks you to try a nearby business day.
+- Add `--fallback previous-available` to try the requested date once, then walk backward one calendar day at a time until rows are found. `--lookback-days` defaults to 10 and is capped at 31.
 
-Result includes resolved `kind`, tenor labels, rows by `적용대상채권`, numeric yields, raw source cell text, and source request metadata. Source `-` cells become `null` in `yields` and remain `-` in `yieldText`.
+Result includes resolved `kind`, tenor labels, rows by `적용대상채권`, numeric yields, raw source cell text, source request metadata, and `dateResolution` metadata. Source `-` cells become `null` in `yields` and remain `-` in `yieldText`.
 
 ### `kinds`
 

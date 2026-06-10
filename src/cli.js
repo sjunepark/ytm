@@ -86,7 +86,7 @@ function writeCommandHelpDiagnostic(command) {
 }
 
 function formatRootHelp() {
-  return `${toolset.help()}\n\nCLI usage:\n  ytm matrix --base-date <기준일> --kind <종류> [--format json|csv|tsv] [--pretty]\n  ytm kinds [--base-date <기준일>] [--format json|csv|tsv] [--pretty]\n  ytm help <command>\n\nOutput:\n  json is the default and prints one JSON object. csv and tsv print tabular success rows. Failures always print one JSON object to stdout and exit non-zero. Help diagnostics for invalid invocations are written to stderr.\n`;
+  return `${toolset.help()}\n\nCLI usage:\n  ytm matrix --base-date <기준일> --kind <종류> [--fallback previous-available] [--lookback-days <days>] [--format json|csv|tsv] [--pretty]\n  ytm kinds [--base-date <기준일>] [--format json|csv|tsv] [--pretty]\n  ytm help <command>\n\nOutput:\n  json is the default and prints one JSON object. csv and tsv print tabular success rows. Failures always print one JSON object to stdout and exit non-zero. Help diagnostics for invalid invocations are written to stderr.\n`;
 }
 
 function formatCommandHelp(command) {
@@ -127,6 +127,17 @@ function parseArgs(command, args) {
     if (arg === "--kind") {
       input.kind = args[++index];
       if (!input.kind) return { ok: false, error: cliError(command, "missing_parameter", "kind", "--kind requires a 종류 value.", "종류 label or code", undefined) };
+      continue;
+    }
+    if (arg === "--fallback") {
+      input.fallback = args[++index];
+      if (!input.fallback) return { ok: false, error: cliError(command, "missing_parameter", "fallback", "--fallback requires a policy value.", "previous-available", undefined) };
+      continue;
+    }
+    if (arg === "--lookback-days" || arg === "--lookbackDays") {
+      const rawLookbackDays = args[++index];
+      if (!rawLookbackDays) return { ok: false, error: cliError(command, "missing_parameter", "lookbackDays", `${arg} requires a day count.`, "integer day count", undefined) };
+      input.lookbackDays = /^\d+$/.test(rawLookbackDays) ? Number(rawLookbackDays) : rawLookbackDays;
       continue;
     }
     if (arg === "--format") {
@@ -172,9 +183,11 @@ function renderSuccess(operation, result, format, pretty) {
 
 function renderMatrixTable(result, format) {
   const delimiter = format === "tsv" ? "\t" : ",";
-  const columns = ["baseDate", "kindCode", "kindName", "pricingGroupCode", "pricingGroupName", ...result.tenors];
+  const columns = ["requestedBaseDate", "baseDate", "usedFallback", "kindCode", "kindName", "pricingGroupCode", "pricingGroupName", ...result.tenors];
   const rows = result.rows.map((row) => [
+    result.requestedBaseDate,
     result.baseDate,
+    result.dateResolution?.usedFallback ?? false,
     result.kind.code,
     result.kind.name,
     row.pricingGroupCode,

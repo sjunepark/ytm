@@ -47,6 +47,29 @@ const invalid = toolset.validateInput("matrix", { baseDate: "2026-99-99", kind: 
 check(!invalid.valid && invalid.error.code === "invalid_parameter" && invalid.error.parameter === "baseDate", "invalid dates must be rejected with recovery metadata");
 const valid = toolset.validateInput("matrix", { baseDate: "2026.06.08", kind: "10" });
 check(valid.valid && valid.normalizedInput.baseDate === "2026-06-08", "valid input must normalize baseDate");
+const fallback = toolset.validateInput("matrix", { baseDate: "2026-06-07", kind: "국채", fallback: "previous-available" });
+check(fallback.valid && fallback.normalizedInput.lookbackDays === 10, "previous-available fallback must default lookbackDays");
+const invalidFallback = toolset.validateInput("matrix", { baseDate: "2026-06-07", kind: "국채", fallback: "next-weekday" });
+check(!invalidFallback.valid && invalidFallback.error.parameter === "fallback", "unsupported fallback policy must be rejected");
+const invalidLookback = toolset.validateInput("matrix", { baseDate: "2026-06-07", kind: "국채", lookbackDays: 10 });
+check(!invalidLookback.valid && invalidLookback.error.parameter === "lookbackDays", "lookbackDays without fallback must be rejected");
+const stringLookback = toolset.validateInput("matrix", { baseDate: "2026-06-07", kind: "국채", fallback: "previous-available", lookbackDays: "10" });
+check(!stringLookback.valid && stringLookback.error.parameter === "lookbackDays", "SDK lookbackDays must match its integer schema and reject strings");
+
+const fallbackResult = await toolset.execute("matrix", { baseDate: "2026-06-07", kind: "국채", fallback: "previous-available", lookbackDays: 2 }, { fetch: fakeFallbackFetch });
+check(fallbackResult.baseDate === "2026-06-05", "previous-available fallback must resolve to the first prior date with rows");
+check(fallbackResult.requestedBaseDate === "2026-06-07", "fallback result must preserve requestedBaseDate");
+check(fallbackResult.dateResolution.usedFallback === true, "fallback result must mark usedFallback");
+check(fallbackResult.dateResolution.attemptedDates.join(",") === "2026-06-07,2026-06-06,2026-06-05", "fallback result must record attempted dates");
+try {
+  await toolset.execute("matrix", { baseDate: "2026-06-07", kind: "국채", fallback: "previous-available", lookbackDays: 1 }, { fetch: fakeUnavailableFetch });
+  failures.push("exhausted fallback must throw source_data_unavailable");
+} catch (error) {
+  const serialized = toolset.serializeError(error);
+  check(serialized.code === "source_data_unavailable", "exhausted fallback must preserve source_data_unavailable code");
+  check(serialized.recoveryAction === "try_nearby_business_day", "exhausted fallback must not ask clients to repeat the same fallback action");
+  check(serialized.attemptedDates?.join(",") === "2026-06-07,2026-06-06", "exhausted fallback must report all attempted dates");
+}
 
 const help = spawnSync(nodeCommand, ["dist/cli.js", "--help"], { encoding: "utf8" });
 check(help.status === 0 && help.stdout.includes("matrix"), "CLI --help must succeed and list commands");
@@ -66,6 +89,37 @@ try {
   check(payload.ok === true && payload.result?.kinds?.some((kind) => kind.name === "국채"), "kinds JSON result must include 국채");
 } catch {
   failures.push("kinds stdout must be JSON");
+}
+
+function fakeFallbackFetch(url, init) {
+  const body = String(init?.body || "");
+  const date = /<Col id="calBaseDt">(\d+)<\/Col>/.exec(body)?.[1];
+  if (String(url).endsWith("/rateInfo/ytmMatrixMobileInitList.do")) {
+    return xmlResponse(dataset("output1", [{ divCode: "10", divName: "국채" }]));
+  }
+  const rows = date === "20260605"
+    ? [{ pricingGroupCode: "100", pricingGroupName: "국고채권", m3: "2.500", m6: "2.510", y1: "2.520" }]
+    : [];
+  return xmlResponse(dataset("output1", rows));
+}
+
+function fakeUnavailableFetch(url) {
+  if (String(url).endsWith("/rateInfo/ytmMatrixMobileInitList.do")) {
+    return xmlResponse(dataset("output1", [{ divCode: "10", divName: "국채" }]));
+  }
+  return xmlResponse(dataset("output1", []));
+}
+
+function xmlResponse(innerXml) {
+  return Promise.resolve({
+    ok: true,
+    status: 200,
+    text: () => Promise.resolve(`<?xml version="1.0" encoding="UTF-8"?><Root><Parameters><Parameter id="ErrorCode">0</Parameter></Parameters>${innerXml}</Root>`)
+  });
+}
+
+function dataset(id, rows) {
+  return `<Dataset id="${id}"><Rows>${rows.map((row) => `<Row>${Object.entries(row).map(([key, value]) => `<Col id="${key}">${value}</Col>`).join("")}</Row>`).join("")}</Rows></Dataset>`;
 }
 
 if (process.env.KISNET_SMOKE_NETWORK === "1") {
