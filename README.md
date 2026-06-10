@@ -53,6 +53,23 @@ ytm <command> --help
 
 Default output is one JSON object. Successful `csv` and `tsv` commands print tabular rows. Failures always print one JSON object and exit non-zero.
 
+## Agent skill
+
+This repository publishes an agent skill at `skills/kisnet-ytm/SKILL.md` so agents can discover how to use the CLI and SDK.
+
+```sh
+# Inspect available skills from this repo
+bunx skills add https://github.com/sjunepark/ytm/tree/main/skills --list
+
+# Install the skill globally for Pi and Claude Code
+bunx skills add https://github.com/sjunepark/ytm/tree/main/skills --skill kisnet-ytm --copy -g -a pi -a claude-code -y
+
+# Use it directly without installing
+bunx skills use sjunepark/ytm --skill kisnet-ytm
+```
+
+If you edit the skill locally, commit and push before installing from the GitHub URL. For local validation, use `bunx skills add ./skills --list`.
+
 ## Operations
 
 ### `matrix`
