@@ -1,0 +1,108 @@
+name: Live KIS-NET Smoke
+
+on:
+  schedule:
+    - cron: "17 1 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      base_date:
+        description: "Requested 기준일 in YYYY-MM-DD form; defaults to today"
+        required: false
+        type: string
+      kind:
+        description: "KIS-NET 종류 code or label"
+        required: false
+        default: "국채"
+        type: string
+      previous_available_days:
+        description: "Maximum earlier calendar days to probe"
+        required: false
+        default: "10"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-kisnet-smoke
+  cancel-in-progress: false
+
+jobs:
+  node:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build npm CLI bundle
+        run: bun run build:node
+
+      - name: Run live Node smoke
+        shell: bash
+        env:
+          INPUT_BASE_DATE: ${{ inputs.base_date }}
+          INPUT_KIND: ${{ inputs.kind }}
+          INPUT_LOOKBACK: ${{ inputs.previous_available_days }}
+        run: |
+          BASE_DATE=${INPUT_BASE_DATE:-$(date -u +%F)}
+          KIND=${INPUT_KIND:-국채}
+          LOOKBACK=${INPUT_LOOKBACK:-10}
+          mkdir -p .tmp
+          node packages/node/dist/cli.js matrix \
+            --base-date "$BASE_DATE" \
+            --kind "$KIND" \
+            --fallback previous-available \
+            --lookback-days "$LOOKBACK" > .tmp/node-smoke.json
+          node -e 'const p=require("./.tmp/node-smoke.json"); if (!p.ok || !p.result?.rows?.length) process.exit(1); console.log(`KIS-NET Node smoke passed: requested=${p.result.requestedBaseDate} resolved=${p.result.baseDate} rows=${p.result.rows.length}`)'
+
+  python:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          version: "0.11.21"
+          enable-cache: true
+          cache-dependency-glob: packages/python/uv.lock
+
+      - name: Install locked Python environment
+        run: uv sync --locked
+        working-directory: packages/python
+
+      - name: Run live Python smoke
+        shell: bash
+        env:
+          INPUT_BASE_DATE: ${{ inputs.base_date }}
+          INPUT_KIND: ${{ inputs.kind }}
+          INPUT_LOOKBACK: ${{ inputs.previous_available_days }}
+        run: |
+          BASE_DATE=${INPUT_BASE_DATE:-$(date -u +%F)}
+          KIND=${INPUT_KIND:-국채}
+          LOOKBACK=${INPUT_LOOKBACK:-10}
+          uv run --locked python scripts/smoke.py \
+            --base-date "$BASE_DATE" \
+            --kind "$KIND" \
+            --previous-available-days "$LOOKBACK"
+        working-directory: packages/python

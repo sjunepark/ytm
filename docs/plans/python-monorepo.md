@@ -14,8 +14,8 @@ consume the same shared fixtures. CI covers Python quality, the supported
 version matrix, artifacts, and a clean wheel import while preserving the
 existing Node check name and npm pack contract.
 
-Next: add the scheduled/manual live-source smoke workflow, then configure the
-linked Release Please components and registry-specific publishing workflows.
+Next: configure the linked Release Please components and registry-specific
+publishing workflows without triggering or merging a release.
 
 ## Objective
 
@@ -204,7 +204,7 @@ Python and operating-system target.
    validation.
 4. [x] Implement the private Nexacro source seam, curl-cffi adapter, retrieval
    flow, fallback behavior, and logging.
-5. [ ] Add cross-language contract tests, Python CI, scheduled network smoke
+5. [x] Add cross-language contract tests, Python CI, scheduled network smoke
    validation, and clean-wheel installation tests.
 6. [ ] Configure linked Release Please components and PyPI trusted publishing;
    update current-state release docs only after the new flow is operational.
@@ -231,6 +231,11 @@ Python and operating-system target.
   3.11-3.14, sdist/wheel builds, a clean 3.11 wheel import, root Node+Python
   validation, and npm pack inspection pass. CI now runs the same deterministic
   gates. Next: scheduled/manual smoke validation and lockstep release wiring.
+- 2026-07-16: Added weekday and manual live-source smoke jobs for both public
+  surfaces. A local live run resolved `2026-07-16` exactly and returned three
+  국채 rows through both Node and Python, confirming the curl-cffi fingerprint
+  and parser against the current source. The smoke remains outside PR gates.
+  Next: linked Release Please and registry-specific publishing workflows.
 
 ## Non-goals for the initial release
 
