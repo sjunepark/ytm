@@ -1,18 +1,22 @@
-name: Release
+name: Release npm
 
 on:
   push:
     tags:
-      - "v*.*.*"
+      - "node-v*.*.*"
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing source tag to publish, for example v0.1.0"
+        description: "Existing Node component tag, for example node-v0.2.0"
         required: true
         type: string
 
 permissions:
   contents: read
+
+concurrency:
+  group: npm-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  cancel-in-progress: false
 
 jobs:
   metadata:
@@ -24,19 +28,25 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
 
-      - name: Read package metadata
+      - name: Set up Python for metadata validation
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.11"
+
+      - name: Validate component metadata
         id: package
         shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
           DISPATCH_TAG: ${{ inputs.tag }}
         run: |
-          PACKAGE_NAME=$(node -p "require('./package.json').name")
-          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          PACKAGE_NAME=$(node -p "require('./packages/node/package.json').name")
+          PACKAGE_VERSION=$(node -p "require('./packages/node/package.json').version")
+          PYTHON_VERSION=$(python -c 'import tomllib; print(tomllib.load(open("packages/python/pyproject.toml", "rb"))["project"]["version"])')
 
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             SOURCE_TAG="$DISPATCH_TAG"
@@ -44,8 +54,12 @@ jobs:
             SOURCE_TAG="$GITHUB_REF_NAME"
           fi
 
-          if [ "$SOURCE_TAG" != "v$PACKAGE_VERSION" ]; then
-            echo "Tag $SOURCE_TAG does not match package version v$PACKAGE_VERSION." >&2
+          if [ "$PACKAGE_VERSION" != "$PYTHON_VERSION" ]; then
+            echo "Node $PACKAGE_VERSION does not match Python $PYTHON_VERSION." >&2
+            exit 1
+          fi
+          if [ "$SOURCE_TAG" != "node-v$PACKAGE_VERSION" ]; then
+            echo "Tag $SOURCE_TAG does not match Node version node-v$PACKAGE_VERSION." >&2
             exit 1
           fi
 
@@ -59,15 +73,15 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
           ref: ${{ needs.metadata.outputs.source_tag }}
 
       - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
 
       - name: Set up Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
           node-version: 24
           package-manager-cache: false
@@ -78,17 +92,20 @@ jobs:
       - name: Build npm CLI bundle
         run: bun run build:node
 
-      - name: Validate tool surface
-        run: bun run validate
+      - name: Validate tool and shared contract surfaces
+        run: bun run contracts:check && bun run validate:node
 
       - name: Check npm package contents
-        run: npm pack --dry-run
+        run: bun run pack:node
 
   publish:
     runs-on: ubuntu-latest
     needs:
       - metadata
       - npm_validation
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/@sjunepark/ytm/v/${{ needs.metadata.outputs.package_version }}
     permissions:
       contents: read
       id-token: write
@@ -98,15 +115,15 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
           ref: ${{ needs.metadata.outputs.source_tag }}
 
       - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
 
-      - name: Set up Node for npm publishing
-        uses: actions/setup-node@v5
+      - name: Set up Node for npm trusted publishing
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
@@ -125,6 +142,7 @@ jobs:
 
       - name: Publish npm package
         shell: bash
+        working-directory: packages/node
         run: |
           if npm view "$PACKAGE_NAME@$PACKAGE_VERSION" version >/dev/null 2>&1; then
             echo "$PACKAGE_NAME@$PACKAGE_VERSION is already published; skipping npm publish."
@@ -139,10 +157,8 @@ jobs:
           if [ "$publish_status" -eq 0 ]; then
             exit 0
           fi
-
           if grep -qi "previously published versions: $PACKAGE_VERSION" npm-publish.log; then
             echo "$PACKAGE_NAME@$PACKAGE_VERSION is already published; skipping npm publish."
             exit 0
           fi
-
           exit "$publish_status"

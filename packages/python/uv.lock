@@ -185,7 +185,7 @@ wheels = [
 
 [[package]]
 name = "kisnet-ytm"
-version = "0.1.1"
+version = "0.1.1" # x-release-please-version
 source = { editable = "." }
 dependencies = [
     { name = "curl-cffi" },

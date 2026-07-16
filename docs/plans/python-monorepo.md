@@ -1,7 +1,9 @@
 # Python Package and Monorepo Plan
 
-Status: implementation in progress; both language packages and their shared
-contract validation are complete, while smoke and release automation remain.
+Status: implementation in progress; both language packages, shared contract
+validation, live smoke coverage, and repository-side release automation are
+complete. Shipped-state documentation and the final public-interface review
+remain.
 
 Last updated: 2026-07-16.
 
@@ -12,10 +14,12 @@ models, `Decimal` yields, the private curl-cffi source seam, explicit typed
 errors, safe logging, and ordered previous-date resolution. Node and Python
 consume the same shared fixtures. CI covers Python quality, the supported
 version matrix, artifacts, and a clean wheel import while preserving the
-existing Node check name and npm pack contract.
+existing Node check name and npm pack contract. Release Please owns two linked
+components at the historical `0.1.1` baseline, and component-tag workflows are
+ready for OIDC publication after their external trusted publishers exist.
 
-Next: configure the linked Release Please components and registry-specific
-publishing workflows without triggering or merging a release.
+Next: update the product and package documentation, then review both public
+interfaces without triggering or merging a release.
 
 ## Objective
 
@@ -206,8 +210,9 @@ Python and operating-system target.
    flow, fallback behavior, and logging.
 5. [x] Add cross-language contract tests, Python CI, scheduled network smoke
    validation, and clean-wheel installation tests.
-6. [ ] Configure linked Release Please components and PyPI trusted publishing;
-   update current-state release docs only after the new flow is operational.
+6. [x] Configure linked Release Please components and OIDC PyPI publishing;
+   document the external trusted-publisher setup that remains an administrator
+   action before the new flow can operate.
 7. [ ] Update the root README, package READMEs, source specification, and agent
    skill to describe shipped behavior, then run a final review of both public
    interfaces.
@@ -236,6 +241,14 @@ Python and operating-system target.
   국채 rows through both Node and Python, confirming the curl-cffi fingerprint
   and parser against the current source. The smoke remains outside PR gates.
   Next: linked Release Please and registry-specific publishing workflows.
+- 2026-07-16: Added linked Node and Python Release Please components at the
+  historical `0.1.1` baseline, package-local changelogs, component-tag npm and
+  PyPI workflows, OIDC environment gates, version/lock/workflow assertions,
+  and shared-contract attribution hashes. Frozen installs, all deterministic
+  package gates, workflow YAML parsing, the official Release Please schema,
+  and uv's no-publish artifact check pass. No release version was selected and
+  no external publisher, PR, tag, or registry state was changed. Next: shipped
+  documentation and a final public-interface review.
 
 ## Non-goals for the initial release
 
