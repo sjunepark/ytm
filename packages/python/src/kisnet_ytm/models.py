@@ -8,6 +8,8 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+_MAX_PREVIOUS_AVAILABLE_DAYS = 31
+
 
 class _ResultModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -26,7 +28,11 @@ class DateResolution(_ResultModel):
     requested_date: date
     resolved_date: date
     attempted_dates: tuple[date, ...] = Field(min_length=1)
-    previous_available_days: int | None = Field(default=None, ge=0)
+    previous_available_days: int | None = Field(
+        default=None,
+        ge=0,
+        le=_MAX_PREVIOUS_AVAILABLE_DAYS,
+    )
     used_previous_available: bool
 
     @model_validator(mode="after")

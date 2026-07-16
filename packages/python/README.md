@@ -24,7 +24,7 @@ print(matrix.rows[0].yields["10Y"])
 
 Exact-date lookup is the default. Pass `previous_available_days=N` only when a
 caller explicitly wants the requested date followed by at most `N` earlier
-calendar dates:
+calendar dates. `N` must be between `0` and `31`:
 
 ```python
 matrix = fetch_matrix(

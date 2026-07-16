@@ -8,9 +8,11 @@ from pathlib import Path
 from typing import cast
 
 import pytest
+from pydantic import ValidationError
 
 from kisnet_ytm import (
     DataUnavailableError,
+    DateResolution,
     InvalidInputError,
     SourceFormatError,
     SourceTransportError,
@@ -168,7 +170,10 @@ def test_transport_failure_stops_fallback() -> None:
         ("2026-06-08", "국채", None),
         (REQUESTED_DATE, "", None),
         (REQUESTED_DATE, "국채", -1),
+        (REQUESTED_DATE, "국채", 32),
+        (REQUESTED_DATE, "국채", 1_000_000_000),
         (REQUESTED_DATE, "국채", True),
+        (date.min, "국채", 1),
     ],
 )
 def test_invalid_inputs_are_explicit(
@@ -182,6 +187,34 @@ def test_invalid_inputs_are_explicit(
             cast(date, base_date),
             kind,
             previous_available_days=previous_available_days,
+        )
+
+
+@pytest.mark.parametrize("previous_available_days", [0, 31])
+def test_previous_available_days_accepts_documented_boundaries(
+    previous_available_days: int,
+) -> None:
+    source = FixtureSource({REQUESTED_DATE: FIXTURES["matrix"]})
+
+    result = fetch_matrix_from_source(
+        source,
+        REQUESTED_DATE,
+        "국채",
+        previous_available_days=previous_available_days,
+    )
+
+    assert result.base_date == REQUESTED_DATE
+    assert result.date_resolution.previous_available_days == previous_available_days
+
+
+def test_date_resolution_rejects_lookback_above_public_limit() -> None:
+    with pytest.raises(ValidationError):
+        DateResolution(
+            requested_date=REQUESTED_DATE,
+            resolved_date=REQUESTED_DATE,
+            attempted_dates=(REQUESTED_DATE,),
+            previous_available_days=32,
+            used_previous_available=False,
         )
 
 

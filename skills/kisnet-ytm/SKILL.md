@@ -38,8 +38,9 @@ matrix = fetch_matrix(date(2026, 6, 8), "국채")
 ```
 
 Use `previous_available_days=N` only when the caller explicitly requests the
-closest prior available date. Python returns Pydantic models with
-`Decimal | None` yields and raises typed `YtmError` subclasses.
+closest prior available date; `N` must be between `0` and `31`. Python returns
+Pydantic models with `Decimal | None` yields and raises typed `YtmError`
+subclasses.
 
 ## Shared behavior
 

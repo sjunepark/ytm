@@ -15,7 +15,7 @@ def fetch_matrix(
     *,
     previous_available_days: int | None = None,
 ) -> Matrix:
-    """Fetch a YTM Matrix for one exact date or an explicit prior-date window."""
+    """Fetch one exact date or an explicit window of at most 31 prior dates."""
     with CurlCffiSource() as source:
         return fetch_matrix_from_source(
             source,

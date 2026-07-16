@@ -1,11 +1,10 @@
 # Python Package and Monorepo Plan
 
-Status: implementation in progress; both language packages, shared contract
-validation, live smoke coverage, repository-side release automation, and
-shipped-state documentation are complete. Final review found one Python
-fallback-window contract decision that needs confirmation.
+Status: repository-local implementation complete. Both language packages,
+shared contract validation, live smoke coverage, repository-side release
+automation, shipped-state documentation, and final review are complete.
 
-Last updated: 2026-07-16.
+Last updated: 2026-07-17.
 
 ## Current state
 
@@ -18,8 +17,9 @@ existing Node check name and npm pack contract. Release Please owns two linked
 components at the historical `0.1.1` baseline, and component-tag workflows are
 ready for OIDC publication after their external trusted publishers exist.
 
-Next: decide whether Python should match Node's 31-day fallback-window cap,
-then close the final review without triggering or merging a release.
+Next: explicitly select the first shared version and complete the documented
+external publisher setup before creating or merging a release PR. Those actions
+remain outside this repository-local implementation.
 
 ## Objective
 
@@ -94,8 +94,8 @@ one.
 
 - Exact-date lookup is the default. No result may silently substitute another
   date.
-- `previous_available_days=N` tries the requested date and then at most `N`
-  earlier calendar dates in order.
+- `previous_available_days=N`, for `0 <= N <= 31`, tries the requested date and
+  then at most `N` earlier calendar dates in order.
 - Previous-date probing continues only after KIS-NET confirms that matrix data
   is unavailable. Transport and source-format failures stop immediately.
 - Results record the requested date, resolved date, and every attempted date.
@@ -213,7 +213,7 @@ Python and operating-system target.
 6. [x] Configure linked Release Please components and OIDC PyPI publishing;
    document the external trusted-publisher setup that remains an administrator
    action before the new flow can operate.
-7. [ ] Update the root README, package READMEs, source specification, and agent
+7. [x] Update the root README, package READMEs, source specification, and agent
    skill to describe shipped behavior, then run a final review of both public
    interfaces.
 
@@ -257,6 +257,16 @@ Python and operating-system target.
   an unbounded `previous_available_days`, unlike Node's 31-day maximum, so an
   extreme value can exhaust resources or raise an untyped date overflow.
   Next: confirm whether to adopt the 31-day Python cap and boundary tests.
+- 2026-07-17: Adopted the approved Python fallback contract of `None` or
+  `0..31`, matching Node's operational bound. Boundary tests also reject date
+  windows before `datetime.date.min` with `InvalidInputError`, so resource use
+  is bounded and the typed-error contract is preserved. The exported Pydantic
+  model enforces the same maximum. Nineteen tests pass on Python 3.11-3.14;
+  root validation/build/package gates, clean-wheel schema validation, skill
+  discovery, and a live Python source check pass. Final review found no
+  remaining decision or residual repository-local risk. Next: follow
+  `docs/release.md` only after explicitly selecting the first shared version
+  and completing external publisher setup.
 
 ## Non-goals for the initial release
 

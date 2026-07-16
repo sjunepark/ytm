@@ -88,8 +88,9 @@ list_kinds(base_date=None) -> tuple[Kind, ...]
 ```
 
 `base_date` is a `datetime.date`. Omitting `previous_available_days` performs
-one exact lookup; `N` permits at most `N` prior calendar dates after the
-requested date.
+one exact lookup. Values from `0` through `31` permit at most that many prior
+calendar dates after the requested date; larger or impossible date windows are
+`InvalidInputError`.
 
 A Python `Matrix` uses snake_case fields: `base_date`, `requested_date`,
 `date_resolution`, `kind`, `tenors`, and `rows`. Yield values are

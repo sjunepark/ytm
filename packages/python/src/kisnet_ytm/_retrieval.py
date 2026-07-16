@@ -9,7 +9,7 @@ from decimal import Decimal, InvalidOperation
 from ._nexacro import TENORS
 from ._source import KisnetSource
 from .errors import DataUnavailableError, InvalidInputError, SourceFormatError
-from .models import DateResolution, Kind, Matrix, MatrixRow
+from .models import _MAX_PREVIOUS_AVAILABLE_DAYS, DateResolution, Kind, Matrix, MatrixRow
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +34,8 @@ def fetch_matrix_from_source(
     requested_date = _validate_date(base_date)
     requested_kind = _validate_kind(kind)
     lookback = _validate_previous_available_days(previous_available_days)
+    if lookback >= requested_date.toordinal():
+        raise InvalidInputError("previous_available_days extends before datetime.date.min")
     attempts = tuple(requested_date - timedelta(days=offset) for offset in range(lookback + 1))
     attempted: list[date] = []
 
@@ -174,6 +176,13 @@ def _validate_kind(value: str) -> str:
 def _validate_previous_available_days(value: int | None) -> int:
     if value is None:
         return 0
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise InvalidInputError("previous_available_days must be a non-negative integer or None")
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or not 0 <= value <= _MAX_PREVIOUS_AVAILABLE_DAYS
+    ):
+        raise InvalidInputError(
+            f"previous_available_days must be an integer from 0 to "
+            f"{_MAX_PREVIOUS_AVAILABLE_DAYS}, or None"
+        )
     return value
