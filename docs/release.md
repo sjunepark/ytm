@@ -1,5 +1,11 @@
 # Release
 
+> This document describes the currently implemented npm-only release flow. The
+> approved but unimplemented Python monorepo migration will replace it with the
+> lockstep model in [Python Package and Monorepo Plan](plans/python-monorepo.md).
+> Continue using the tag and publishing conventions below until that migration
+> lands.
+
 This repo publishes the npm package `@sjunepark/ytm`. The npm package includes the Node-based `ytm` CLI through `package.json` `bin` and the reusable `./toolset` export.
 
 Release Please owns normal version bumps, `CHANGELOG.md`, source tags, and GitHub Releases. The Release workflow validates tagged source and publishes npm. This repo does not build or upload standalone OS-native binaries.

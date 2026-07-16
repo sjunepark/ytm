@@ -4,6 +4,14 @@
 
 The agent-facing contract is English, while official KIS-NET terms such as `기준일`, `종류`, `국채`, and `회사채(무보증)` are preserved.
 
+## Planned Python package
+
+An approved plan will reorganize this repository as a monorepo and add the
+`kisnet-ytm` distribution for Python 3.11+, imported as `kisnet_ytm`. The Python
+package is not implemented or published yet. See
+[the Python package and monorepo plan](docs/plans/python-monorepo.md) for the
+agreed interface, dependencies, release model, and implementation sequence.
+
 ## Request inspection summary
 
 The mobile site is a Nexacro app. The YTM Matrix form is `rateinfo::YtmMatrix.xfdl`.
