@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Root xmlns="http://www.nexacroplatform.com/platform/dataset">
+  <Parameters><Parameter id="ErrorCode">0</Parameter></Parameters>
+  <Dataset id="output1">
+    <Rows>
+      <Row>
+        <Col id="pricingGroupCode">100</Col>
+        <Col id="pricingGroupName">국고채권</Col>
+        <Col id="m3">2.500</Col><Col id="m6">-</Col><Col id="m9">2.520</Col>
+        <Col id="y1">2.530</Col><Col id="y15a">2.540</Col><Col id="y2"></Col>
+        <Col id="y25">2.560</Col><Col id="y3">2.570</Col><Col id="y5">2.600</Col>
+        <Col id="y7">2.700</Col><Col id="y10">2.800</Col><Col id="y15">2.900</Col>
+        <Col id="y20">3.000</Col><Col id="y30">3.100</Col><Col id="y50">3.200</Col>
+      </Row>
+    </Rows>
+  </Dataset>
+</Root>

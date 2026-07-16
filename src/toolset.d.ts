@@ -17,7 +17,7 @@ export interface OperationSpec {
 
 export interface ValidationErrorDetails {
   ok: false;
-  code: "missing_parameter" | "invalid_parameter" | "unknown_parameter" | "invalid_request" | "source_data_unavailable";
+  code: "missing_parameter" | "invalid_parameter" | "unknown_parameter" | "invalid_request" | "source_data_unavailable" | "source_transport_error" | "source_format_error";
   operationName?: string;
   parameter?: string;
   reason: string;

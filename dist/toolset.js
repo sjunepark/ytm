@@ -33,6 +33,8 @@ const TENORS = [
   ["y30", "30Y"],
   ["y50", "50Y"]
 ];
+const REQUIRED_MATRIX_COLUMNS = ["pricingGroupCode", "pricingGroupName", ...TENORS.map(([key]) => key)];
+const DECIMAL_TEXT = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/;
 
 const operationSpecs = [
   {
@@ -491,12 +493,26 @@ function formatKindsForHelp() {
 }
 
 function normalizeMatrixRow(row, kind) {
+  const missingColumns = REQUIRED_MATRIX_COLUMNS.filter((column) => !Object.hasOwn(row, column));
+  if (missingColumns.length > 0) {
+    throw new KisnetYtmError(sourceFormatError(`KIS-NET matrix row is missing required column(s): ${missingColumns.join(", ")}.`));
+  }
+  if (!String(row.pricingGroupCode).trim() || !String(row.pricingGroupName).trim()) {
+    throw new KisnetYtmError(sourceFormatError("KIS-NET matrix row contains an empty pricing group code or name."));
+  }
   const yields = {};
   const yieldText = {};
   for (const [key, label] of TENORS) {
     const raw = row[key] === undefined ? "" : String(row[key]).trim();
     yieldText[label] = raw;
-    yields[label] = raw === "" || raw === "-" ? null : Number(raw);
+    if (raw === "" || raw === "-") {
+      yields[label] = null;
+      continue;
+    }
+    if (!DECIMAL_TEXT.test(raw) || !Number.isFinite(Number(raw))) {
+      throw new KisnetYtmError(sourceFormatError(`KIS-NET matrix column ${key} contains an invalid numeric value.`));
+    }
+    yields[label] = Number(raw);
   }
   return {
     groupName: kind.name,
@@ -513,33 +529,70 @@ async function postNexacroXml(endpoint, body, context = {}) {
   if (typeof fetchImpl !== "function") {
     throw new KisnetYtmError({ code: "invalid_request", reason: "No fetch implementation is available. Use Node 20.18.1+ or pass context.fetch.", recoveryHint: "Run this package with Node 20.18.1 or newer.", recoveryAction: "inspect_tool_help", recoverable: true, retryable: false });
   }
-  const response = await fetchImpl(`${SOURCE_BASE_URL}${endpoint}`, {
-    method: "POST",
-    headers: {
-      "content-type": "text/xml; charset=UTF-8",
-      "accept": "text/xml, */*",
-      "user-agent": "ytm/0.1.0"
-    },
-    body,
-    signal: context.signal
-  });
-  const text = await response.text();
+  let response;
+  try {
+    response = await fetchImpl(`${SOURCE_BASE_URL}${endpoint}`, {
+      method: "POST",
+      headers: {
+        "content-type": "text/xml; charset=UTF-8",
+        "accept": "text/xml, */*",
+        "user-agent": "ytm/0.1.0"
+      },
+      body,
+      signal: context.signal
+    });
+  } catch (error) {
+    throw new KisnetYtmError(sourceTransportError("KIS-NET request failed before a response was received.", error));
+  }
+  let text;
+  try {
+    text = await response.text();
+  } catch (error) {
+    throw new KisnetYtmError(sourceTransportError("KIS-NET response body could not be read.", error));
+  }
   if (!response.ok) {
-    throw new KisnetYtmError({ code: "invalid_request", reason: `KIS-NET returned HTTP ${response.status}.`, expected: "HTTP 200", actual: response.status, recoveryHint: "Retry later or inspect whether KIS-NET is available.", recoveryAction: "inspect_tool_help", recoverable: true, retryable: true });
+    throw new KisnetYtmError(sourceTransportError(`KIS-NET returned HTTP ${response.status}.`, undefined, response.status));
+  }
+  if (!/<Root(?:\s|>)[\s\S]*<\/Root>\s*$/.test(text)) {
+    throw new KisnetYtmError(sourceFormatError("KIS-NET returned malformed Nexacro XML."));
   }
   const errorCode = parseParameter(text, "ErrorCode");
-  if (errorCode && errorCode !== "0") {
-    const baseDate = compactToDisplay(extractRequestColumn(body, "calBaseDt")) || "requested date";
+  if (errorCode === undefined) {
+    throw new KisnetYtmError(sourceFormatError("KIS-NET response is missing the required ErrorCode parameter."));
+  }
+  if (errorCode !== "0") {
     const errorMessage = parseParameter(text, "ErrorMsg") || parseParameter(text, "ErrorMessage");
-    const operationName = endpoint === LIST_ENDPOINT ? "matrix" : "kinds";
-    throw new KisnetYtmError(sourceDataUnavailableError({
-      operationName,
-      baseDate,
-      attemptedDates: baseDate === "requested date" ? [] : [baseDate],
-      reason: `KIS-NET returned ErrorCode ${errorCode}${errorMessage ? ` (${errorMessage})` : ""} for ${baseDate}. It may be a weekend, holiday, or unavailable source date.`
-    }));
+    throw new KisnetYtmError(sourceFormatError(`KIS-NET returned protocol ErrorCode ${errorCode}${errorMessage ? ` (${errorMessage})` : ""}.`));
   }
   return text;
+}
+
+function sourceTransportError(reason, cause, status) {
+  return {
+    ok: false,
+    code: "source_transport_error",
+    reason,
+    expected: "A successful HTTP response from KIS-NET",
+    actual: status === undefined ? undefined : status,
+    recoveryHint: "Retry later or inspect whether KIS-NET is available.",
+    recoveryAction: "inspect_tool_help",
+    recoverable: true,
+    retryable: true,
+    cause: cause instanceof Error ? cause.name : undefined
+  };
+}
+
+function sourceFormatError(reason) {
+  return {
+    ok: false,
+    code: "source_format_error",
+    reason,
+    expected: "A valid KIS-NET Nexacro response matching the documented YTM Matrix schema",
+    recoveryHint: "The KIS-NET source format may have changed; update the package before retrying.",
+    recoveryAction: "inspect_tool_help",
+    recoverable: false,
+    retryable: false
+  };
 }
 
 function buildRequestXml({ serviceId, endpoint, outDatasets, baseDateCompact, kindCode }) {
@@ -549,7 +602,9 @@ function buildRequestXml({ serviceId, endpoint, outDatasets, baseDateCompact, ki
 
 function parseDataset(xml, id) {
   const match = new RegExp(`<Dataset\\s+id=["']${escapeRegExp(id)}["'][^>]*>([\\s\\S]*?)<\\/Dataset>`).exec(xml);
-  if (!match) return [];
+  if (!match) {
+    throw new KisnetYtmError(sourceFormatError(`KIS-NET response is missing required dataset ${id}.`));
+  }
   const rows = [];
   const rowPattern = /<Row[^>]*>([\s\S]*?)<\/Row>/g;
   let rowMatch;

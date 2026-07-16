@@ -1,9 +1,19 @@
 # Python Package and Monorepo Plan
 
-Status: approved for implementation; no Python distribution or monorepo layout
-exists yet.
+Status: implementation in progress; shared source contracts and Node regression
+coverage are complete, while the repository layout remains npm-only.
 
 Last updated: 2026-07-16.
+
+## Current state
+
+Shared fixtures under `contracts/kisnet` now define request mapping, canonical
+tenor order, missing-cell normalization, and the unavailable/transport/format
+error boundary. The Node validation suite exercises those fixtures and rejects
+malformed matrices instead of treating source drift as unavailable data.
+
+Next: move the existing npm package to `packages/node` as a private-root Bun
+workspace without changing its published CLI or `./toolset` contract.
 
 ## Objective
 
@@ -185,23 +195,28 @@ Python and operating-system target.
 
 ## Implementation sequence
 
-1. Add shared KIS-NET fixtures and characterize the existing Node behavior.
-2. Move the npm package to `packages/node` without changing its published
+1. [x] Add shared KIS-NET fixtures and characterize the existing Node behavior.
+2. [ ] Move the npm package to `packages/node` without changing its published
    interface, output, or validation behavior.
-3. Add `packages/python`, its public models and errors, and package-build
+3. [ ] Add `packages/python`, its public models and errors, and package-build
    validation.
-4. Implement the private Nexacro source seam, curl-cffi adapter, retrieval
+4. [ ] Implement the private Nexacro source seam, curl-cffi adapter, retrieval
    flow, fallback behavior, and logging.
-5. Add cross-language contract tests, Python CI, scheduled network smoke
+5. [ ] Add cross-language contract tests, Python CI, scheduled network smoke
    validation, and clean-wheel installation tests.
-6. Configure linked Release Please components and PyPI trusted publishing;
+6. [ ] Configure linked Release Please components and PyPI trusted publishing;
    update current-state release docs only after the new flow is operational.
-7. Update the root README, package READMEs, source specification, and agent
+7. [ ] Update the root README, package READMEs, source specification, and agent
    skill to describe shipped behavior, then run a final review of both public
    interfaces.
 
-Next action: capture shared fixtures and establish regression coverage before
-moving the existing Node package.
+## Progress log
+
+- 2026-07-16: Added versioned shared Nexacro fixtures and Node contract tests.
+  `bun run test`, `npm pack --dry-run`, and `git diff --check` pass. Source
+  transport and format failures are now distinct from confirmed unavailable
+  data, so previous-date fallback cannot hide upstream breakage. Next: package
+  the unchanged Node surface under `packages/node`.
 
 ## Non-goals for the initial release
 

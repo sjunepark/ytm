@@ -4,6 +4,11 @@ import { spawnSync } from "node:child_process";
 import { createKisnetYtmToolset } from "../dist/toolset.js";
 
 const failures = [];
+const contractDirectory = new URL("../contracts/kisnet/", import.meta.url);
+const contract = JSON.parse(await readFile(new URL("cases.json", contractDirectory), "utf8"));
+const fixtures = Object.fromEntries(await Promise.all(
+  Object.entries(contract.fixtures).map(async ([name, file]) => [name, await readFile(new URL(file, contractDirectory), "utf8")])
+));
 
 function check(condition, message) {
   if (!condition) failures.push(message);
@@ -56,6 +61,42 @@ check(!invalidLookback.valid && invalidLookback.error.parameter === "lookbackDay
 const stringLookback = toolset.validateInput("matrix", { baseDate: "2026-06-07", kind: "국채", fallback: "previous-available", lookbackDays: "10" });
 check(!stringLookback.valid && stringLookback.error.parameter === "lookbackDays", "SDK lookbackDays must match its integer schema and reject strings");
 
+const capturedRequests = [];
+const fixtureResult = await toolset.execute("matrix", { baseDate: contract.request.baseDate, kind: contract.request.kind.name }, { fetch: fixtureFetch(fixtures.matrix, capturedRequests) });
+check(fixtureResult.tenors.join(",") === contract.canonicalTenors.map(({ label }) => label).join(","), "matrix result must preserve canonical tenor order from the shared contract");
+check(fixtureResult.rows[0]?.pricingGroupCode === contract.expectations.matrix.pricingGroupCode, "matrix fixture must preserve pricing group code");
+check(fixtureResult.rows[0]?.yieldText["3M"] === contract.expectations.matrix.threeMonth, "matrix fixture must preserve raw yield text");
+check(String(fixtureResult.rows[0]?.yields["10Y"]) === String(Number(contract.expectations.matrix.tenYear)), "matrix fixture must expose numeric yields");
+check(capturedRequests.some(({ url, body }) => url.endsWith(contract.request.initEndpoint) && body.includes(`<Col id="calBaseDt">${contract.request.baseDateCompact}</Col>`)), "init request must map baseDate to calBaseDt using compact form");
+check(capturedRequests.some(({ url, body }) => url.endsWith(contract.request.matrixEndpoint) && body.includes(`<Col id="cboYtmSort">${contract.request.kind.code}</Col>`)), "matrix request must map kind to cboYtmSort using source code");
+
+const missingValueResult = await toolset.execute("matrix", { baseDate: contract.request.baseDate, kind: contract.request.kind.name }, { fetch: fixtureFetch(fixtures.missingValues) });
+for (const tenor of contract.expectations.missingValues.nullTenors) {
+  check(missingValueResult.rows[0]?.yields[tenor] === null, `shared missing value ${tenor} must normalize to null`);
+  check(missingValueResult.rows[0]?.yieldText[tenor] === contract.expectations.missingValues.rawValues[tenor], `shared missing value ${tenor} must preserve raw text`);
+}
+
+for (const [fixtureName, expectedCode] of [
+  ["unavailable", contract.expectations.unavailableError],
+  ["malformed", contract.expectations.formatError],
+  ["invalidNumeric", contract.expectations.formatError],
+  ["missingColumn", contract.expectations.formatError]
+]) {
+  try {
+    await toolset.execute("matrix", { baseDate: contract.request.baseDate, kind: contract.request.kind.name }, { fetch: fixtureFetch(fixtures[fixtureName]) });
+    failures.push(`${fixtureName} fixture must throw ${expectedCode}`);
+  } catch (error) {
+    check(toolset.serializeError(error).code === expectedCode, `${fixtureName} fixture must throw ${expectedCode}`);
+  }
+}
+
+try {
+  await toolset.execute("matrix", { baseDate: contract.request.baseDate, kind: contract.request.kind.name }, { fetch: async () => { throw new TypeError("fixture transport failure"); } });
+  failures.push("transport failure must throw source_transport_error");
+} catch (error) {
+  check(toolset.serializeError(error).code === contract.expectations.transportError, "transport failure must remain distinct from unavailable and malformed source data");
+}
+
 const fallbackResult = await toolset.execute("matrix", { baseDate: "2026-06-07", kind: "국채", fallback: "previous-available", lookbackDays: 2 }, { fetch: fakeFallbackFetch });
 check(fallbackResult.baseDate === "2026-06-05", "previous-available fallback must resolve to the first prior date with rows");
 check(fallbackResult.requestedBaseDate === "2026-06-07", "fallback result must preserve requestedBaseDate");
@@ -95,31 +136,32 @@ function fakeFallbackFetch(url, init) {
   const body = String(init?.body || "");
   const date = /<Col id="calBaseDt">(\d+)<\/Col>/.exec(body)?.[1];
   if (String(url).endsWith("/rateInfo/ytmMatrixMobileInitList.do")) {
-    return xmlResponse(dataset("output1", [{ divCode: "10", divName: "국채" }]));
+    return xmlResponse(fixtures.init);
   }
-  const rows = date === "20260605"
-    ? [{ pricingGroupCode: "100", pricingGroupName: "국고채권", m3: "2.500", m6: "2.510", y1: "2.520" }]
-    : [];
-  return xmlResponse(dataset("output1", rows));
+  return xmlResponse(date === "20260605" ? fixtures.matrix : fixtures.unavailable);
 }
 
 function fakeUnavailableFetch(url) {
   if (String(url).endsWith("/rateInfo/ytmMatrixMobileInitList.do")) {
-    return xmlResponse(dataset("output1", [{ divCode: "10", divName: "국채" }]));
+    return xmlResponse(fixtures.init);
   }
-  return xmlResponse(dataset("output1", []));
+  return xmlResponse(fixtures.unavailable);
 }
 
-function xmlResponse(innerXml) {
+function fixtureFetch(matrixFixture, capturedRequests = []) {
+  return (url, init) => {
+    const request = { url: String(url), body: String(init?.body || "") };
+    capturedRequests.push(request);
+    return xmlResponse(request.url.endsWith(contract.request.initEndpoint) ? fixtures.init : matrixFixture);
+  };
+}
+
+function xmlResponse(xml) {
   return Promise.resolve({
     ok: true,
     status: 200,
-    text: () => Promise.resolve(`<?xml version="1.0" encoding="UTF-8"?><Root><Parameters><Parameter id="ErrorCode">0</Parameter></Parameters>${innerXml}</Root>`)
+    text: () => Promise.resolve(xml)
   });
-}
-
-function dataset(id, rows) {
-  return `<Dataset id="${id}"><Rows>${rows.map((row) => `<Row>${Object.entries(row).map(([key, value]) => `<Col id="${key}">${value}</Col>`).join("")}</Row>`).join("")}</Rows></Dataset>`;
 }
 
 if (process.env.KISNET_SMOKE_NETWORK === "1") {

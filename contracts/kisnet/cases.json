@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "request": {
+    "baseDate": "2026-06-08",
+    "baseDateCompact": "20260608",
+    "kind": {
+      "code": "10",
+      "name": "국채"
+    },
+    "initEndpoint": "/rateInfo/ytmMatrixMobileInitList.do",
+    "matrixEndpoint": "/rateInfo/ytmMatrixMobileList.do"
+  },
+  "canonicalTenors": [
+    { "source": "m3", "label": "3M" },
+    { "source": "m6", "label": "6M" },
+    { "source": "m9", "label": "9M" },
+    { "source": "y1", "label": "1Y" },
+    { "source": "y15a", "label": "1.5Y" },
+    { "source": "y2", "label": "2Y" },
+    { "source": "y25", "label": "2.5Y" },
+    { "source": "y3", "label": "3Y" },
+    { "source": "y5", "label": "5Y" },
+    { "source": "y7", "label": "7Y" },
+    { "source": "y10", "label": "10Y" },
+    { "source": "y15", "label": "15Y" },
+    { "source": "y20", "label": "20Y" },
+    { "source": "y30", "label": "30Y" },
+    { "source": "y50", "label": "50Y" }
+  ],
+  "fixtures": {
+    "init": "init-success.xml",
+    "matrix": "matrix-success.xml",
+    "missingValues": "matrix-missing-values.xml",
+    "unavailable": "matrix-unavailable.xml",
+    "malformed": "malformed-response.xml",
+    "invalidNumeric": "matrix-invalid-numeric.xml",
+    "missingColumn": "matrix-missing-column.xml"
+  },
+  "expectations": {
+    "matrix": {
+      "pricingGroupCode": "100",
+      "pricingGroupName": "국고채권",
+      "threeMonth": "2.500",
+      "tenYear": "2.800"
+    },
+    "missingValues": {
+      "nullTenors": ["6M", "2Y"],
+      "rawValues": { "6M": "-", "2Y": "" }
+    },
+    "unavailableError": "source_data_unavailable",
+    "transportError": "source_transport_error",
+    "formatError": "source_format_error"
+  }
+}
