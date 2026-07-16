@@ -1,0 +1,19 @@
+{
+  "lockfileVersion": 1,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "kisnet-ytm-monorepo",
+    },
+    "packages/node": {
+      "name": "@sjunepark/ytm",
+      "version": "0.1.1",
+      "bin": {
+        "ytm": "dist/cli.js",
+      },
+    },
+  },
+  "packages": {
+    "@sjunepark/ytm": ["@sjunepark/ytm@workspace:packages/node"],
+  }
+}

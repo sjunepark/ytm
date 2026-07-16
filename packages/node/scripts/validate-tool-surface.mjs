@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 import { createKisnetYtmToolset } from "../dist/toolset.js";
 
 const failures = [];
-const contractDirectory = new URL("../contracts/kisnet/", import.meta.url);
+const contractDirectory = new URL("../../../contracts/kisnet/", import.meta.url);
 const contract = JSON.parse(await readFile(new URL("cases.json", contractDirectory), "utf8"));
 const fixtures = Object.fromEntries(await Promise.all(
   Object.entries(contract.fixtures).map(async ([name, file]) => [name, await readFile(new URL(file, contractDirectory), "utf8")])
@@ -24,6 +24,10 @@ check(pkg.bin && pkg.bin["ytm"] === "dist/cli.js", "package.json must expose bin
 check(pkg.exports?.["./toolset"]?.import === "./dist/toolset.js", "package.json must export ./toolset import surface");
 check(pkg.exports?.["./toolset"]?.types === "./dist/toolset.d.ts", "package.json must export ./toolset types");
 check(pkg.exports?.["./package.json"] === "./package.json", "package.json must export ./package.json metadata");
+check(existsSync("README.md"), "npm package must include its package-owned README.md");
+check(existsSync("SPEC.md"), "npm package must preserve the published tool surface SPEC.md");
+check(existsSync("LICENSE.md"), "npm package must include LICENSE.md");
+check(existsSync("skills/kisnet-ytm/SKILL.md"), "npm package must preserve the installable kisnet-ytm agent skill");
 check(existsSync("dist/cli.js"), "dist/cli.js must exist; run bun run build");
 check(existsSync("dist/toolset.js"), "dist/toolset.js must exist; run bun run build");
 check(existsSync("dist/toolset.d.ts"), "dist/toolset.d.ts must exist; run bun run build");

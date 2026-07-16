@@ -36,4 +36,4 @@ jobs:
         run: bun run validate
 
       - name: Check npm package contents
-        run: npm pack --dry-run
+        run: bun run pack:node

@@ -1,19 +1,19 @@
 # Python Package and Monorepo Plan
 
-Status: implementation in progress; shared source contracts and Node regression
-coverage are complete, while the repository layout remains npm-only.
+Status: implementation in progress; shared source contracts and the Node
+workspace migration are complete, while the Python package is not yet present.
 
 Last updated: 2026-07-16.
 
 ## Current state
 
-Shared fixtures under `contracts/kisnet` now define request mapping, canonical
-tenor order, missing-cell normalization, and the unavailable/transport/format
-error boundary. The Node validation suite exercises those fixtures and rejects
-malformed matrices instead of treating source drift as unavailable data.
+The root is now a private Bun workspace with a frozen lockfile. The unchanged
+`@sjunepark/ytm` CLI/toolset package lives under `packages/node`, still ships
+the same eight npm artifact paths, and consumes shared fixtures from
+`contracts/kisnet` for request, normalization, and error-boundary coverage.
 
-Next: move the existing npm package to `packages/node` as a private-root Bun
-workspace without changing its published CLI or `./toolset` contract.
+Next: add the buildable `packages/python` distribution, public Pydantic models,
+and explicit error hierarchy before connecting the production source adapter.
 
 ## Objective
 
@@ -196,7 +196,7 @@ Python and operating-system target.
 ## Implementation sequence
 
 1. [x] Add shared KIS-NET fixtures and characterize the existing Node behavior.
-2. [ ] Move the npm package to `packages/node` without changing its published
+2. [x] Move the npm package to `packages/node` without changing its published
    interface, output, or validation behavior.
 3. [ ] Add `packages/python`, its public models and errors, and package-build
    validation.
@@ -217,6 +217,12 @@ Python and operating-system target.
   transport and format failures are now distinct from confirmed unavailable
   data, so previous-date fallback cannot hide upstream breakage. Next: package
   the unchanged Node surface under `packages/node`.
+- 2026-07-16: Converted the root to a private Bun workspace, moved the npm
+  package to `packages/node`, and added the root `bun.lock`. Frozen install,
+  root-delegated Node tests, npm pack dry-run, and artifact inspection pass.
+  The package still contains the same eight published paths; package-owned
+  docs avoid coupling npm contents to the cross-language root docs. Next: add
+  the native Python package and build validation.
 
 ## Non-goals for the initial release
 
