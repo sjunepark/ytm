@@ -76,7 +76,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Build npm CLI bundle
-        run: bun run build
+        run: bun run build:node
 
       - name: Validate tool surface
         run: bun run validate
@@ -121,7 +121,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Build npm CLI bundle
-        run: bun run build
+        run: bun run build:node
 
       - name: Publish npm package
         shell: bash

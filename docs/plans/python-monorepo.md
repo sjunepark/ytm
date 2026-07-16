@@ -1,19 +1,21 @@
 # Python Package and Monorepo Plan
 
-Status: implementation in progress; shared source contracts and the Node
-workspace migration are complete, while the Python package is not yet present.
+Status: implementation in progress; both language packages and their shared
+contract validation are complete, while smoke and release automation remain.
 
 Last updated: 2026-07-16.
 
 ## Current state
 
-The root is now a private Bun workspace with a frozen lockfile. The unchanged
-`@sjunepark/ytm` CLI/toolset package lives under `packages/node`, still ships
-the same eight npm artifact paths, and consumes shared fixtures from
-`contracts/kisnet` for request, normalization, and error-boundary coverage.
+`packages/python` now builds `kisnet-ytm` for Python 3.11-3.14 with Pydantic
+models, `Decimal` yields, the private curl-cffi source seam, explicit typed
+errors, safe logging, and ordered previous-date resolution. Node and Python
+consume the same shared fixtures. CI covers Python quality, the supported
+version matrix, artifacts, and a clean wheel import while preserving the
+existing Node check name and npm pack contract.
 
-Next: add the buildable `packages/python` distribution, public Pydantic models,
-and explicit error hierarchy before connecting the production source adapter.
+Next: add the scheduled/manual live-source smoke workflow, then configure the
+linked Release Please components and registry-specific publishing workflows.
 
 ## Objective
 
@@ -198,9 +200,9 @@ Python and operating-system target.
 1. [x] Add shared KIS-NET fixtures and characterize the existing Node behavior.
 2. [x] Move the npm package to `packages/node` without changing its published
    interface, output, or validation behavior.
-3. [ ] Add `packages/python`, its public models and errors, and package-build
+3. [x] Add `packages/python`, its public models and errors, and package-build
    validation.
-4. [ ] Implement the private Nexacro source seam, curl-cffi adapter, retrieval
+4. [x] Implement the private Nexacro source seam, curl-cffi adapter, retrieval
    flow, fallback behavior, and logging.
 5. [ ] Add cross-language contract tests, Python CI, scheduled network smoke
    validation, and clean-wheel installation tests.
@@ -223,6 +225,12 @@ Python and operating-system target.
   The package still contains the same eight published paths; package-owned
   docs avoid coupling npm contents to the cross-language root docs. Next: add
   the native Python package and build validation.
+- 2026-07-16: Added and locked the native Python package, including public
+  models/errors, curl-cffi transport, Nexacro parser, source-independent
+  retrieval, and shared fixture tests. Ruff, ty 0.0.60, tests on Python
+  3.11-3.14, sdist/wheel builds, a clean 3.11 wheel import, root Node+Python
+  validation, and npm pack inspection pass. CI now runs the same deterministic
+  gates. Next: scheduled/manual smoke validation and lockstep release wiring.
 
 ## Non-goals for the initial release
 

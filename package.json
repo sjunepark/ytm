@@ -6,9 +6,15 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "bun run --filter @sjunepark/ytm build",
-    "validate": "bun run --filter @sjunepark/ytm validate",
-    "test": "bun run --filter @sjunepark/ytm test",
+    "build": "bun run build:node && bun run build:python",
+    "build:node": "bun run --filter @sjunepark/ytm build",
+    "build:python": "uv build --project packages/python",
+    "validate": "bun run validate:node && bun run validate:python",
+    "validate:node": "bun run --filter @sjunepark/ytm validate",
+    "validate:python": "uv run --locked --project packages/python ruff format --check packages/python && uv run --locked --project packages/python ruff check packages/python && uv run --locked --project packages/python ty check packages/python",
+    "test": "bun run test:node && bun run test:python",
+    "test:node": "bun run --filter @sjunepark/ytm test",
+    "test:python": "uv run --locked --project packages/python pytest packages/python/tests",
     "pack:node": "npm pack --dry-run --workspace packages/node",
     "cli": "bun run packages/node/src/cli.js",
     "smoke:node": "node packages/node/dist/cli.js matrix --base-date 2026-06-08 --kind 국채 --format json"
