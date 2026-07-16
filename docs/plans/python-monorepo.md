@@ -1,9 +1,9 @@
 # Python Package and Monorepo Plan
 
 Status: implementation in progress; both language packages, shared contract
-validation, live smoke coverage, and repository-side release automation are
-complete. Shipped-state documentation and the final public-interface review
-remain.
+validation, live smoke coverage, repository-side release automation, and
+shipped-state documentation are complete. Final review found one Python
+fallback-window contract decision that needs confirmation.
 
 Last updated: 2026-07-16.
 
@@ -18,8 +18,8 @@ existing Node check name and npm pack contract. Release Please owns two linked
 components at the historical `0.1.1` baseline, and component-tag workflows are
 ready for OIDC publication after their external trusted publishers exist.
 
-Next: update the product and package documentation, then review both public
-interfaces without triggering or merging a release.
+Next: decide whether Python should match Node's 31-day fallback-window cap,
+then close the final review without triggering or merging a release.
 
 ## Objective
 
@@ -249,6 +249,14 @@ Python and operating-system target.
   and uv's no-publish artifact check pass. No release version was selected and
   no external publisher, PR, tag, or registry state was changed. Next: shipped
   documentation and a final public-interface review.
+- 2026-07-16: Updated the product contract, both package READMEs, the published
+  Node specification, and the repository skill for the shipped two-language
+  surfaces. Full validation, local link checks, skill discovery, npm pack
+  inspection, and a clean Python 3.11 wheel import pass. Final review found no
+  safe-fix defects and one public-contract decision: Python currently accepts
+  an unbounded `previous_available_days`, unlike Node's 31-day maximum, so an
+  extreme value can exhaust resources or raise an untyped date overflow.
+  Next: confirm whether to adopt the 31-day Python cap and boundary tests.
 
 ## Non-goals for the initial release
 

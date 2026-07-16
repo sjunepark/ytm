@@ -1,6 +1,6 @@
 # @sjunepark/ytm
 
-`ytm` is a deterministic CLI plus runtime-neutral `./toolset` SDK for KIS-NET YTM Matrix lookups from <https://kis-net.kr/kisnet_mobile/index.html>.
+`ytm` is a deterministic CLI plus runtime-neutral `./toolset` SDK for KIS-NET YTM Matrix lookups from <https://kis-net.kr/kisnet_mobile/index.html>. It is the Node interface of the KIS-NET YTM monorepo; the sibling `kisnet-ytm` package provides a native Python API.
 
 The agent-facing contract is English, while official KIS-NET terms such as `기준일`, `종류`, `국채`, and `회사채(무보증)` are preserved.
 
@@ -57,7 +57,7 @@ Default output is one JSON object. Successful `csv` and `tsv` commands print tab
 
 ## Agent skill
 
-This repository publishes an agent skill at `skills/kisnet-ytm/SKILL.md` so agents can discover how to use the CLI and SDK.
+The npm package includes an agent skill at `skills/kisnet-ytm/SKILL.md` so agents can discover how to use the CLI and SDK. The repository-level skill also routes in-process Python callers to the native Python package.
 
 ```sh
 # Inspect available skills from this repo
@@ -88,6 +88,8 @@ Input:
 - Add `--fallback previous-available` to try the requested date once, then walk backward one calendar day at a time until rows are found. `--lookback-days` defaults to 10 and is capped at 31.
 
 Result includes resolved `kind`, tenor labels, rows by `적용대상채권`, numeric yields, raw source cell text, source request metadata, and `dateResolution` metadata. Source `-` cells become `null` in `yields` and remain `-` in `yieldText`.
+
+Fallback continues only after KIS-NET confirms that data is unavailable. A network or HTTP failure returns `source_transport_error`; malformed XML, missing required columns, and invalid numeric cells return `source_format_error` immediately.
 
 ### `kinds`
 
@@ -129,10 +131,16 @@ The SDK exposes `help()`, `listOperations()`, `getOperation()`, `getCommandHelp(
 
 ## Validation
 
+From the repository root:
+
 ```sh
-bun run build
-bun run validate
-KISNET_SMOKE_NETWORK=1 bun run validate
+bun run build:node
+bun run validate:node
+bun run test:node
+bun run pack:node
 ```
+
+Live source checks run through the scheduled or manually dispatched workflow,
+not through ordinary package validation.
 
 Structured validation failures include `code`, `operationName`, `parameter`, `expected`, safe `actual`, `exampleInput`, `recoveryHint`, `recoveryAction`, `recoverable`, and retry metadata where applicable.

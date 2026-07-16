@@ -1,60 +1,63 @@
 ---
 name: kisnet-ytm
-description: Use when answering requests for KIS-NET YTM Matrix or Korean bond yield curves/rates by 기준일/base date and 종류/kind; guides agents to run @sjunepark/ytm with npx, bunx, ytm CLI, or the SDK.
+description: Use when answering requests for KIS-NET YTM Matrix or Korean bond yield curves/rates by 기준일/base date and 종류/kind; routes agents to the @sjunepark/ytm CLI/toolset or native kisnet-ytm Python API.
 ---
 
 # KIS-NET YTM Matrix
 
-Use this skill when a user asks for KIS-NET YTM Matrix data, Korean bond yield matrix/rates, or yields for `국채`, `지방채`, `특수채`, `통안채`, `은행채`, `기타금융채`, or `회사채(무보증)` by `기준일`/base date.
+Use this skill for KIS-NET YTM Matrix data or Korean bond yield rates by
+`기준일`/base date and `종류`/kind.
 
-Prefer the published `@sjunepark/ytm` CLI when shell access is available. It reproduces the deterministic KIS-NET mobile Nexacro POST shape directly; do not scrape the browser unless the CLI cannot answer the task.
+Use the published `@sjunepark/ytm` CLI for shell-based retrieval. Use the native
+`kisnet_ytm` API when working inside Python. Both reproduce the deterministic
+KIS-NET mobile Nexacro request directly. Reserve browser inspection for source
+diagnosis after both direct package surfaces fail.
 
-## CLI usage
-
-Use one of these forms:
+## CLI
 
 ```sh
-npx -y @sjunepark/ytm --help
 npx -y @sjunepark/ytm kinds --format json
 npx -y @sjunepark/ytm matrix --base-date 2026-06-08 --kind 국채 --format json --pretty
-npx -y @sjunepark/ytm matrix --base-date 2026-06-07 --kind 국채 --fallback previous-available --format json --pretty
-
-bunx @sjunepark/ytm --help
-bunx @sjunepark/ytm matrix --base-date 2026-06-08 --kind 회사채\(무보증\) --format json --pretty
-
-ytm matrix --base-date 2026-06-08 --kind 10 --format tsv
+npx -y @sjunepark/ytm matrix --base-date 2026-06-07 --kind 국채 --fallback previous-available --lookback-days 10 --format json --pretty
 ```
 
-- `matrix` fetches YTM Matrix rows for a `baseDate`/`기준일` and `kind`/`종류`.
-- `kinds` lists accepted `kind` codes and Korean labels. Run it when the requested category is ambiguous.
-- Accepted date forms are `YYYY-MM-DD`, `YYYY.MM.DD`, and `YYYYMMDD`.
-- `kind` accepts either a source code or Korean label.
-- Exact-date behavior is the default: if KIS-NET returns no rows, the CLI fails with `source_data_unavailable` instead of silently changing the date.
-- Use `--fallback previous-available` only when the user wants the closest prior available date. It tries the requested date first, then walks backward; `--lookback-days` defaults to 10.
-- JSON is the default and prints one JSON object. Use JSON for agent parsing; use CSV/TSV only when the user explicitly wants a table/export.
-- Failures print one JSON object and exit non-zero. Read `code`, `parameter`, `expected`, `recoveryHint`, and `recoveryAction` before retrying.
+- Dates accept `YYYY-MM-DD`, `YYYY.MM.DD`, or `YYYYMMDD`.
+- Kind accepts a source code or Korean label.
+- JSON is the default and is preferred for agent parsing.
+- Failures print one JSON object and exit non-zero. Inspect its code and
+  recovery metadata before retrying.
 
-Known `종류` values:
+## Python
 
-| code | name |
-| --- | --- |
-| 10 | 국채 |
-| 20 | 지방채 |
-| 30 | 특수채 |
-| 40 | 통안채 |
-| 50 | 은행채 |
-| 60 | 기타금융채 |
-| 70 | 회사채(무보증) |
+```python
+from datetime import date
+from kisnet_ytm import fetch_matrix, list_kinds
 
-## Result handling
+kinds = list_kinds()
+matrix = fetch_matrix(date(2026, 6, 8), "국채")
+```
 
-For `matrix`, report `requestedBaseDate`, resolved `baseDate`, `dateResolution.usedFallback`, resolved `kind`, tenor labels, and rows by `적용대상채권`. Numeric yield cells are in `yields`; the raw source text is in `yieldText`. Source `-` cells mean unavailable data and are represented as `null` in `yields`.
+Use `previous_available_days=N` only when the caller explicitly requests the
+closest prior available date. Python returns Pydantic models with
+`Decimal | None` yields and raises typed `YtmError` subclasses.
 
-Preserve official Korean terms such as `기준일`, `종류`, and `적용대상채권` when they clarify the source data.
+## Shared behavior
 
-## Toolset SDK
+- Exact-date lookup is the default; never silently substitute a date.
+- Previous-available lookup tries earlier calendar dates in order and reports
+  the attempted and resolved dates.
+- Retry fallback only for confirmed unavailable data. Transport and source
+  format failures stop immediately.
+- Report requested and resolved dates, kind, tenors, and rows by
+  `적용대상채권`.
+- Source `-` or empty yields are null-like in parsed values and preserved in
+  raw text.
 
-For in-process JavaScript/TypeScript integration:
+Known kinds are `10` 국채, `20` 지방채, `30` 특수채, `40` 통안채, `50`
+은행채, `60` 기타금융채, and `70` 회사채(무보증). Preserve official Korean
+terms when they clarify the source data.
+
+## JavaScript toolset
 
 ```js
 import { createKisnetYtmToolset } from "@sjunepark/ytm/toolset";
@@ -64,9 +67,6 @@ const validation = toolset.validateInput("matrix", {
   baseDate: "2026-06-08",
   kind: "국채"
 });
-
 if (!validation.valid) throw validation.error;
 const result = await toolset.execute("matrix", validation.normalizedInput);
 ```
-
-The SDK exposes `help()`, `listOperations()`, `getOperation()`, `getCommandHelp()`, `validateInput()`, `execute()`, and `serializeError()`.
