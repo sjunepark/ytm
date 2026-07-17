@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE Root [<!ENTITY source "KIS-NET">]>
+<Root xmlns="http://www.nexacroplatform.com/platform/dataset">
+  <Parameters><Parameter id="ErrorCode">0</Parameter></Parameters>
+  <Dataset id="output1"><Rows><Row>
+    <Col id="divCode">10</Col><Col id="divName">국채</Col>
+  </Row></Rows></Dataset>
+</Root>

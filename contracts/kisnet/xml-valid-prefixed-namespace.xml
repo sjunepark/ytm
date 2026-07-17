@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<nx:Root xmlns:nx="http://www.nexacroplatform.com/platform/dataset">
+  <nx:Parameters><nx:Parameter id="ErrorCode">0</nx:Parameter></nx:Parameters>
+  <nx:Dataset id="output1"><nx:Rows><nx:Row>
+    <nx:Col id="divCode">10</nx:Col><nx:Col id="divName">국채</nx:Col>
+  </nx:Row></nx:Rows></nx:Dataset>
+</nx:Root>

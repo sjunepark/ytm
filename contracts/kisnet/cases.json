@@ -27,6 +27,10 @@
     { "source": "y30", "label": "30Y" },
     { "source": "y50", "label": "50Y" }
   ],
+  "xmlLimits": {
+    "maxBodyBytes": 1048576,
+    "maxElementDepth": 64
+  },
   "fixtures": {
     "init": "init-success.xml",
     "initMalformedMixed": "init-malformed-mixed.xml",
@@ -39,7 +43,45 @@
     "invalidErrorCode": "invalid-error-code.xml",
     "malformed": "malformed-response.xml",
     "invalidNumeric": "matrix-invalid-numeric.xml",
-    "missingColumn": "matrix-missing-column.xml"
+    "missingColumn": "matrix-missing-column.xml",
+    "xmlAttributeOrder": "xml-valid-attribute-order.xml",
+    "xmlPrefixedNamespace": "xml-valid-prefixed-namespace.xml",
+    "xmlEpilogComment": "xml-valid-epilog-comment.xml",
+    "xmlSelfClosingCell": "xml-valid-self-closing-cell.xml",
+    "xmlCdata": "xml-valid-cdata.xml",
+    "xmlAstralEntity": "xml-valid-astral-entity.xml",
+    "xmlNonrecursiveEntity": "xml-valid-nonrecursive-entity.xml",
+    "xmlMalformedNesting": "xml-invalid-malformed-nesting.xml",
+    "xmlMissingNamespace": "xml-invalid-missing-namespace.xml",
+    "xmlWrongNamespace": "xml-invalid-wrong-namespace.xml",
+    "xmlDoctypeEntity": "xml-invalid-doctype-entity.xml",
+    "xmlNestedColumn": "xml-invalid-nested-column.xml",
+    "xmlDuplicateErrorCode": "xml-invalid-duplicate-error-code.xml",
+    "xmlDuplicateErrorMessage": "xml-invalid-duplicate-error-message.xml",
+    "xmlDuplicateDataset": "xml-invalid-duplicate-dataset.xml",
+    "xmlDuplicateColumn": "xml-invalid-duplicate-column.xml"
+  },
+  "xmlCases": {
+    "valid": [
+      { "fixture": "xmlAttributeOrder", "operation": "kinds", "expectedKindCode": "10", "expectedKindName": "국채" },
+      { "fixture": "xmlPrefixedNamespace", "operation": "kinds", "expectedKindCode": "10", "expectedKindName": "국채" },
+      { "fixture": "xmlEpilogComment", "operation": "kinds", "expectedKindCode": "10", "expectedKindName": "국채" },
+      { "fixture": "xmlSelfClosingCell", "operation": "matrix", "expectedRawColumn": "y2", "expectedRawValue": "", "expectedExtraRawColumn": "__proto__", "expectedExtraRawValue": "source-compatible" },
+      { "fixture": "xmlCdata", "operation": "kinds", "expectedKindCode": "10", "expectedKindName": "국채" },
+      { "fixture": "xmlAstralEntity", "operation": "kinds", "expectedKindCode": "10", "expectedKindName": "국채📈" },
+      { "fixture": "xmlNonrecursiveEntity", "operation": "kinds", "expectedKindCode": "10", "expectedKindName": "&lt;" }
+    ],
+    "invalid": [
+      "xmlMalformedNesting",
+      "xmlMissingNamespace",
+      "xmlWrongNamespace",
+      "xmlDoctypeEntity",
+      "xmlNestedColumn",
+      "xmlDuplicateErrorCode",
+      "xmlDuplicateErrorMessage",
+      "xmlDuplicateDataset",
+      "xmlDuplicateColumn"
+    ]
   },
   "expectations": {
     "matrix": {

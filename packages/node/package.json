@@ -33,6 +33,9 @@
     "node": ">=20.18.1"
   },
   "license": "MIT",
+  "dependencies": {
+    "@xmldom/xmldom": "^0.9.10"
+  },
   "scripts": {
     "build": "bun scripts/build.mjs",
     "prepack": "bun run build",

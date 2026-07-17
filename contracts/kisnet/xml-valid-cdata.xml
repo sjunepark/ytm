@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Root xmlns="http://www.nexacroplatform.com/platform/dataset">
+  <Parameters><Parameter id="ErrorCode"><![CDATA[0]]></Parameter></Parameters>
+  <Dataset id="output1"><Rows><Row>
+    <Col id="divCode"><![CDATA[10]]></Col><Col id="divName">국<![CDATA[채]]></Col>
+    <Col id="referenceText"><![CDATA[&#0;]]></Col>
+  </Row></Rows></Dataset>
+</Root>

@@ -1,3 +1,5 @@
+import { NexacroResponseError, parseNexacroDataset } from "./nexacro.js";
+
 const SOURCE_PAGE_URL = "https://kis-net.kr/kisnet_mobile/index.html";
 const SOURCE_BASE_URL = "https://kis-net.kr";
 const INIT_ENDPOINT = "/rateInfo/ytmMatrixMobileInitList.do";
@@ -6,6 +8,7 @@ const FALLBACK_PREVIOUS_AVAILABLE = "previous-available";
 const DEFAULT_LOOKBACK_DAYS = 10;
 const MAX_LOOKBACK_DAYS = 31;
 const DEFAULT_REQUEST_TIMEOUT_MS = 20_000;
+const MAX_RESPONSE_BODY_BYTES = 1_048_576;
 
 const STATIC_KINDS = [
   { code: "10", name: "국채" },
@@ -36,8 +39,6 @@ const TENORS = [
 ];
 const REQUIRED_MATRIX_COLUMNS = ["pricingGroupCode", "pricingGroupName", ...TENORS.map(([key]) => key)];
 const DECIMAL_TEXT = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/;
-const ERROR_CODE_TEXT = /^[+-]?[0-9]+$/;
-const ZERO_ERROR_CODE_TEXT = /^[+-]?0+$/;
 
 const operationSpecs = [
   {
@@ -136,6 +137,14 @@ export class KisnetYtmError extends Error {
     super(details.message || details.reason || details.code);
     this.name = "KisnetYtmError";
     this.details = details;
+  }
+}
+
+class SourceResponseFormatError extends Error {
+  constructor(message, cause) {
+    super(message);
+    this.name = "SourceResponseFormatError";
+    if (cause !== undefined) this.cause = cause;
   }
 }
 
@@ -551,30 +560,85 @@ async function postNexacroXml(endpoint, body, context = {}) {
   } catch (error) {
     throw new KisnetYtmError(sourceTransportError("KIS-NET request failed before a response was received.", error));
   }
-  let text;
-  try {
-    text = await response.text();
-  } catch (error) {
-    throw new KisnetYtmError(sourceTransportError("KIS-NET response body could not be read.", error));
-  }
   if (!response.ok) {
+    await cancelResponseBody(response);
     throw new KisnetYtmError(sourceTransportError(`KIS-NET returned HTTP ${response.status}.`, undefined, response.status));
   }
-  if (!/<Root(?:\s|>)[\s\S]*<\/Root>\s*$/.test(text)) {
-    throw new KisnetYtmError(sourceFormatError("KIS-NET returned malformed Nexacro XML."));
+  try {
+    return await readBoundedUtf8Body(response);
+  } catch (error) {
+    if (error instanceof SourceResponseFormatError) {
+      throw new KisnetYtmError(sourceFormatError(`${error.message}.`));
+    }
+    throw new KisnetYtmError(sourceTransportError("KIS-NET response body could not be read.", error));
   }
-  const errorCode = parseParameter(text, "ErrorCode");
-  if (errorCode === undefined) {
-    throw new KisnetYtmError(sourceFormatError("KIS-NET response is missing the required ErrorCode parameter."));
+}
+
+async function readBoundedUtf8Body(response) {
+  const reader = response.body?.getReader?.();
+  if (!reader) {
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.byteLength > MAX_RESPONSE_BODY_BYTES) throw oversizedResponseError();
+    return decodeUtf8(bytes);
   }
-  if (!ERROR_CODE_TEXT.test(errorCode)) {
-    throw new KisnetYtmError(sourceFormatError("KIS-NET response contains an invalid ErrorCode parameter."));
+
+  const chunks = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = value instanceof Uint8Array ? value : new Uint8Array(value);
+      totalBytes += chunk.byteLength;
+      if (totalBytes > MAX_RESPONSE_BODY_BYTES) {
+        try {
+          await reader.cancel();
+        } catch {
+          // Preserve the source-format error that caused cancellation.
+        }
+        throw oversizedResponseError();
+      }
+      chunks.push(chunk);
+    }
+  } catch (error) {
+    if (error instanceof SourceResponseFormatError) throw error;
+    try {
+      await reader.cancel(error);
+    } catch {
+      // Preserve the original stream read failure.
+    }
+    throw error;
+  } finally {
+    reader.releaseLock();
   }
-  if (!ZERO_ERROR_CODE_TEXT.test(errorCode)) {
-    const errorMessage = parseParameter(text, "ErrorMsg") || parseParameter(text, "ErrorMessage");
-    throw new KisnetYtmError(sourceProtocolError(errorCode, errorMessage));
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
   }
-  return text;
+  return decodeUtf8(bytes);
+}
+
+function decodeUtf8(bytes) {
+  try {
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+  } catch (error) {
+    throw new SourceResponseFormatError("KIS-NET response is not valid UTF-8", error);
+  }
+}
+
+function oversizedResponseError() {
+  return new SourceResponseFormatError(`KIS-NET response exceeds the maximum body size of ${MAX_RESPONSE_BODY_BYTES} bytes`);
+}
+
+async function cancelResponseBody(response) {
+  try {
+    await response.body?.cancel?.();
+  } catch {
+    // The response is already being discarded; cancellation errors are non-actionable.
+  }
 }
 
 function sourceTransportError(reason, cause, status) {
@@ -627,33 +691,15 @@ function buildRequestXml({ serviceId, endpoint, outDatasets, baseDateCompact, ki
 }
 
 function parseDataset(xml, id) {
-  const match = new RegExp(`<Dataset\\s+id=["']${escapeRegExp(id)}["'][^>]*>([\\s\\S]*?)<\\/Dataset>`).exec(xml);
-  if (!match) {
-    throw new KisnetYtmError(sourceFormatError(`KIS-NET response is missing required dataset ${id}.`));
-  }
-  const rows = [];
-  const rowPattern = /<Row[^>]*>([\s\S]*?)<\/Row>/g;
-  let rowMatch;
-  while ((rowMatch = rowPattern.exec(match[1]))) {
-    const row = {};
-    const colPattern = /<Col\s+id=["']([^"']+)["'][^>]*>([\s\S]*?)<\/Col>/g;
-    let colMatch;
-    while ((colMatch = colPattern.exec(rowMatch[1]))) {
-      row[decodeXml(colMatch[1])] = decodeXml(colMatch[2]);
+  try {
+    return parseNexacroDataset(xml, id);
+  } catch (error) {
+    if (error instanceof NexacroResponseError && error.isProtocolError) {
+      throw new KisnetYtmError(sourceProtocolError(error.errorCode, error.errorMessage));
     }
-    rows.push(row);
+    const reason = error instanceof Error ? error.message : "KIS-NET returned malformed Nexacro XML";
+    throw new KisnetYtmError(sourceFormatError(`${reason}.`));
   }
-  return rows;
-}
-
-function parseParameter(xml, id) {
-  const match = new RegExp(`<Parameter\\s+id=["']${escapeRegExp(id)}["'][^>]*>([\\s\\S]*?)<\\/Parameter>`).exec(xml);
-  return match ? decodeXml(match[1]).trim() : undefined;
-}
-
-function extractRequestColumn(xml, id) {
-  const match = new RegExp(`<Col\\s+id=["']${escapeRegExp(id)}["'][^>]*>([\\s\\S]*?)<\\/Col>`).exec(xml);
-  return match ? decodeXml(match[1]).trim() : undefined;
 }
 
 function compactToDisplay(value) {
@@ -733,19 +779,4 @@ function safeActual(value) {
 
 function escapeXml(value) {
   return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
-}
-
-function decodeXml(value) {
-  return String(value)
-    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, code) => String.fromCharCode(parseInt(code, 16)))
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&amp;/g, "&");
-}
-
-function escapeRegExp(value) {
-  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
