@@ -1,6 +1,6 @@
 {
   "name": "@sjunepark/ytm",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Deterministic CLI and neutral toolset for KIS-NET YTM Matrix lookups.",
   "type": "module",
   "packageManager": "bun@1.3.13",
