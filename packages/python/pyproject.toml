@@ -32,6 +32,7 @@ Repository = "https://github.com/sjunepark/ytm"
 dev = [
   "build>=1.4,<2",
   "hatchling>=1.28,<2",
+  "hypothesis>=6.156,<7",
   "pytest>=9.1,<10",
   "ruff>=0.15,<0.16",
   "ty==0.0.60",
@@ -48,6 +49,7 @@ addopts = "-ra --strict-markers"
 testpaths = ["tests"]
 markers = [
   "live: makes requests to the live KIS-NET service (requires --live-kisnet)",
+  "live_property: samples a bounded set of generated cases against live KIS-NET",
 ]
 
 [tool.ruff]

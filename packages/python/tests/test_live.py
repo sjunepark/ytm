@@ -6,8 +6,10 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 
 import pytest
+from hypothesis import Phase, given, settings
+from hypothesis import strategies as st
 
-from kisnet_ytm import fetch_matrix, list_kinds
+from kisnet_ytm import Matrix, fetch_matrix, list_kinds
 
 pytestmark = pytest.mark.live
 
@@ -17,6 +19,9 @@ class LiveConfig:
     base_date: date
     kind: str
     lookback: int
+
+
+LIVE_SAMPLE_KINDS = ("국채", "지방채", "특수채")
 
 
 @pytest.fixture(scope="module")
@@ -54,10 +59,37 @@ def test_live_fetch_matrix(live_config: LiveConfig) -> None:
         previous_available_days=live_config.lookback,
     )
 
-    earliest_date = live_config.base_date - timedelta(days=live_config.lookback)
-    assert earliest_date <= matrix.base_date <= live_config.base_date
-    assert matrix.requested_date == live_config.base_date
-    assert matrix.date_resolution.attempted_dates[0] == live_config.base_date
+    assert_live_matrix(matrix, live_config.base_date, live_config.lookback)
+
+
+@pytest.mark.live_property
+@settings(max_examples=3, deadline=None, phases=[Phase.generate])
+@given(
+    days_before_base=st.integers(min_value=0, max_value=2),
+    kind=st.sampled_from(LIVE_SAMPLE_KINDS),
+)
+def test_live_generated_matrix_sample(
+    live_config: LiveConfig,
+    days_before_base: int,
+    kind: str,
+) -> None:
+    requested_date = live_config.base_date - timedelta(days=days_before_base)
+    matrix = fetch_matrix(
+        requested_date,
+        kind,
+        previous_available_days=live_config.lookback,
+    )
+
+    assert_live_matrix(matrix, requested_date, live_config.lookback)
+    assert matrix.kind.name == kind
+
+
+def assert_live_matrix(matrix: Matrix, requested_date: date, lookback: int) -> None:
+    earliest_date = requested_date - timedelta(days=lookback)
+
+    assert earliest_date <= matrix.base_date <= requested_date
+    assert matrix.requested_date == requested_date
+    assert matrix.date_resolution.attempted_dates[0] == requested_date
     assert matrix.date_resolution.attempted_dates[-1] == matrix.base_date
     assert matrix.rows
     assert matrix.tenors
