@@ -392,7 +392,10 @@ async function listYtmSorts(input = {}, context = {}) {
   });
   const responseXml = await postNexacroXml(INIT_ENDPOINT, xml, context);
   const rows = parseDataset(responseXml, "output1");
-  const kinds = rows.map((row) => ({ code: String(row.divCode || "").trim(), name: String(row.divName || "").trim() })).filter((kind) => kind.code && kind.name);
+  const kinds = rows.map((row) => ({ code: String(row.divCode || "").trim(), name: String(row.divName || "").trim() }));
+  if (kinds.some((kind) => !kind.code || !kind.name)) {
+    throw new KisnetYtmError(sourceFormatError("KIS-NET kind row is missing divCode or divName."));
+  }
   if (kinds.length === 0) {
     throw new KisnetYtmError(sourceDataUnavailableError({
       operationName: "kinds",

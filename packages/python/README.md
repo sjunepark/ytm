@@ -86,3 +86,10 @@ bun run build:python
 ```
 
 The supported Python 3.11-3.14 matrix and clean-wheel import run in CI.
+The source distribution also contains the tests and shared contract fixtures.
+After extracting it, downstream packagers can run the same locked suite with:
+
+```sh
+uv sync --locked
+uv run --locked pytest
+```

@@ -19,6 +19,7 @@
     "contracts:sync": "node scripts/contracts-hash.mjs",
     "release:check": "node scripts/validate-release.mjs",
     "pack:node": "npm pack --dry-run --workspace packages/node",
+    "pack:python": "uv build --project packages/python && uv run --locked --project packages/python python packages/python/scripts/validate_dist.py",
     "cli": "bun run packages/node/src/cli.js",
     "smoke:node": "node packages/node/dist/cli.js matrix --base-date 2026-06-08 --kind 국채 --format json"
   }

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import pickle
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
@@ -26,10 +27,23 @@ from kisnet_ytm._nexacro import (
 from kisnet_ytm._retrieval import fetch_matrix_from_source
 from kisnet_ytm.models import Kind
 
-CONTRACT_DIRECTORY = Path(__file__).parents[3] / "contracts" / "kisnet"
-CONTRACT = json.loads((CONTRACT_DIRECTORY / "cases.json").read_text())
+
+def resolve_contract_directory() -> Path:
+    test_file = Path(__file__).resolve()
+    candidates = (
+        test_file.parents[1] / "contracts" / "kisnet",
+        test_file.parents[3] / "contracts" / "kisnet",
+    )
+    for candidate in candidates:
+        if (candidate / "cases.json").is_file():
+            return candidate
+    raise RuntimeError("KIS-NET contract fixtures are missing from the source tree")
+
+
+CONTRACT_DIRECTORY = resolve_contract_directory()
+CONTRACT = json.loads((CONTRACT_DIRECTORY / "cases.json").read_text(encoding="utf-8"))
 FIXTURES = {
-    name: (CONTRACT_DIRECTORY / filename).read_text()
+    name: (CONTRACT_DIRECTORY / filename).read_text(encoding="utf-8")
     for name, filename in CONTRACT["fixtures"].items()
 }
 REQUESTED_DATE = date.fromisoformat(CONTRACT["request"]["baseDate"])
@@ -47,6 +61,12 @@ class FixtureSource:
     def fetch_rows(self, base_date: date, kind_code: str) -> tuple[dict[str, str], ...]:
         self.calls.append((f"matrix:{kind_code}", base_date))
         return parse_matrix_response(self.matrix_by_date[base_date])
+
+
+@pytest.mark.parametrize("fixture_name", ["initMalformedMixed", "initMalformedAll"])
+def test_malformed_kind_rows_are_source_format_errors(fixture_name: str) -> None:
+    with pytest.raises(SourceFormatError):
+        parse_kinds_response(FIXTURES[fixture_name])
 
 
 def test_request_mapping_and_canonical_tenors() -> None:
@@ -98,6 +118,21 @@ def test_exact_unavailable_records_only_requested_date() -> None:
 
     assert caught.value.requested_date == REQUESTED_DATE
     assert caught.value.attempted_dates == (REQUESTED_DATE,)
+
+
+def test_data_unavailable_error_round_trips_through_pickle() -> None:
+    error = DataUnavailableError(
+        "fixture unavailable",
+        requested_date=REQUESTED_DATE,
+        attempted_dates=(REQUESTED_DATE,),
+    )
+
+    restored = pickle.loads(pickle.dumps(error))
+
+    assert type(restored) is DataUnavailableError
+    assert str(restored) == str(error)
+    assert restored.requested_date == error.requested_date
+    assert restored.attempted_dates == error.attempted_dates
 
 
 def test_previous_available_probes_calendar_dates_in_order() -> None:

@@ -4,12 +4,14 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
   release_please:
+    if: ${{ vars.RELEASE_PLEASE_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write

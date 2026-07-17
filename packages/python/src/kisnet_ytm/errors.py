@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import date
 
 
@@ -26,6 +27,29 @@ class DataUnavailableError(YtmError):
         super().__init__(message)
         self.requested_date = requested_date
         self.attempted_dates = attempted_dates
+
+    def __reduce__(
+        self,
+    ) -> tuple[
+        Callable[[str, date, tuple[date, ...]], DataUnavailableError],
+        tuple[str, date, tuple[date, ...]],
+    ]:
+        return (
+            _restore_data_unavailable_error,
+            (str(self), self.requested_date, self.attempted_dates),
+        )
+
+
+def _restore_data_unavailable_error(
+    message: str,
+    requested_date: date,
+    attempted_dates: tuple[date, ...],
+) -> DataUnavailableError:
+    return DataUnavailableError(
+        message,
+        requested_date=requested_date,
+        attempted_dates=attempted_dates,
+    )
 
 
 class SourceTransportError(YtmError):

@@ -29,6 +29,8 @@
   ],
   "fixtures": {
     "init": "init-success.xml",
+    "initMalformedMixed": "init-malformed-mixed.xml",
+    "initMalformedAll": "init-malformed-all.xml",
     "matrix": "matrix-success.xml",
     "missingValues": "matrix-missing-values.xml",
     "unavailable": "matrix-unavailable.xml",

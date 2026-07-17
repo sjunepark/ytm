@@ -33,9 +33,8 @@ matrix = fetch_matrix(date(2026, 6, 8), "국채")
 print(matrix.rows[0].yields["10Y"])
 ```
 
-The Python package is complete in this repository; its first PyPI publication
-is intentionally pending the first shared release decision and external trusted
-publisher setup.
+The Python package is complete in this repository; its selected first shared
+release is `0.2.0`, with publication pending external trusted-publisher setup.
 
 ## Repository validation
 
@@ -46,6 +45,7 @@ bun run validate
 bun run test
 bun run build
 bun run pack:node
+bun run pack:python
 ```
 
 Live KIS-NET smoke checks are scheduled and manually dispatchable rather than

@@ -39,6 +39,9 @@ dev = [
 [tool.hatch.build.targets.wheel]
 packages = ["src/kisnet_ytm"]
 
+[tool.hatch.build.targets.sdist.force-include]
+"../../contracts/kisnet" = "contracts/kisnet"
+
 [tool.pytest.ini_options]
 addopts = "-ra --strict-markers"
 testpaths = ["tests"]

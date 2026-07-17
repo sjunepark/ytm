@@ -6,7 +6,21 @@ const check = (condition, message) => {
   if (!condition) failures.push(message);
 };
 
-const [rootPackage, nodePackage, manifest, config, pyproject, uvLock, bunLock, npmWorkflow, pypiWorkflow, nodeChangelog, pythonChangelog] = await Promise.all([
+const [
+  rootPackage,
+  nodePackage,
+  manifest,
+  config,
+  pyproject,
+  uvLock,
+  bunLock,
+  ciWorkflow,
+  releasePleaseWorkflow,
+  npmWorkflow,
+  pypiWorkflow,
+  nodeChangelog,
+  pythonChangelog
+] = await Promise.all([
   readJson("package.json"),
   readJson("packages/node/package.json"),
   readJson(".release-please-manifest.json"),
@@ -14,6 +28,8 @@ const [rootPackage, nodePackage, manifest, config, pyproject, uvLock, bunLock, n
   readFile("packages/python/pyproject.toml", "utf8"),
   readFile("packages/python/uv.lock", "utf8"),
   readFile("bun.lock", "utf8"),
+  readFile(".github/workflows/ci.yml", "utf8"),
+  readFile(".github/workflows/release-please.yml", "utf8"),
   readFile(".github/workflows/release.yml", "utf8"),
   readFile(".github/workflows/release-python.yml", "utf8"),
   readFile("packages/node/CHANGELOG.md", "utf8"),
@@ -50,6 +66,9 @@ const linked = config.plugins?.find((plugin) => plugin.type === "linked-versions
 check(linked?.groupName === "ytm", "Release Please must use the ytm linked-version group");
 check(JSON.stringify([...(linked?.components || [])].sort()) === JSON.stringify(["node", "python"]), "linked-version group must contain node and python");
 
+check(releasePleaseWorkflow.includes("workflow_dispatch:"), "Release Please must support guarded manual dispatch");
+check(releasePleaseWorkflow.includes("if: ${{ vars.RELEASE_PLEASE_ENABLED == 'true' }}"), "Release Please must remain guarded by RELEASE_PLEASE_ENABLED");
+check(ciWorkflow.includes("scripts/validate_dist.py --python-version 3.11"), "CI must validate the extracted Python source distribution");
 check(npmWorkflow.includes('"node-v*.*.*"'), "npm workflow must trigger only from Node component tags");
 check(npmWorkflow.includes('"node-v$PACKAGE_VERSION"'), "npm workflow must verify its component tag and version");
 check(npmWorkflow.includes("working-directory: packages/node"), "npm publish must run from packages/node");
@@ -57,6 +76,7 @@ check(npmWorkflow.includes("id-token: write"), "npm trusted publishing must requ
 check(npmWorkflow.includes("name: npm"), "npm publish job must use the npm GitHub environment");
 check(pypiWorkflow.includes('"python-v*.*.*"'), "PyPI workflow must trigger only from Python component tags");
 check(pypiWorkflow.includes('"python-v$PACKAGE_VERSION"'), "PyPI workflow must verify its component tag and version");
+check(pypiWorkflow.includes("scripts/validate_dist.py --python-version 3.11"), "PyPI release validation must test the extracted source distribution");
 check(pypiWorkflow.includes("actions/upload-artifact@") && pypiWorkflow.includes("actions/download-artifact@"), "PyPI workflow must promote the validated distributions");
 check(pypiWorkflow.includes("uv publish --check-url https://pypi.org/simple/kisnet-ytm/ --trusted-publishing always dist/*"), "PyPI workflow must publish idempotently with trusted publishing");
 check(pypiWorkflow.includes("id-token: write"), "PyPI trusted publishing must request OIDC");

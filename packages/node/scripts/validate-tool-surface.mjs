@@ -94,6 +94,15 @@ for (const [fixtureName, expectedCode] of [
   }
 }
 
+for (const fixtureName of ["initMalformedMixed", "initMalformedAll"]) {
+  try {
+    await toolset.execute("kinds", { baseDate: contract.request.baseDate }, { fetch: () => xmlResponse(fixtures[fixtureName]) });
+    failures.push(`${fixtureName} fixture must throw ${contract.expectations.formatError}`);
+  } catch (error) {
+    check(toolset.serializeError(error).code === contract.expectations.formatError, `${fixtureName} fixture must throw ${contract.expectations.formatError}`);
+  }
+}
+
 try {
   await toolset.execute("matrix", { baseDate: contract.request.baseDate, kind: contract.request.kind.name }, { fetch: async () => { throw new TypeError("fixture transport failure"); } });
   failures.push("transport failure must throw source_transport_error");

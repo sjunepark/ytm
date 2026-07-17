@@ -1,14 +1,15 @@
 # Release
 
 Release Please is the only version authority for `@sjunepark/ytm` and
-`kisnet-ytm`. The repository is ready for lockstep releases, but no shared
-release has been selected or published. Both package metadata and the manifest
-currently use the historical product baseline `0.1.1`.
+`kisnet-ytm`. The selected first shared release is `0.2.0` for both packages,
+but it has not been created or published. Package metadata and the manifest
+remain at the historical product baseline `0.1.1` until Release Please prepares
+the combined release PR.
 
-Do not create or merge the first combined release PR, push component tags, or
-publish either package until the exact first shared version is explicitly
-confirmed. Do not manually edit package versions, changelogs, lock versions, or
-the Release Please manifest as a fallback.
+Do not merge the first combined release PR, push component tags, or publish
+either package until that PR confirms `0.2.0` for both components and receives
+explicit approval. Do not manually edit package versions, changelogs, lock
+versions, or the Release Please manifest as a fallback.
 
 ## Repository release model
 
@@ -40,6 +41,24 @@ ordinary `feat:` and `fix:` commits as patch releases and reserves a minor bump
 for breaking changes. Mark breaking changes with `!` or a `BREAKING CHANGE:`
 footer. The linked group then applies the highest required bump to both
 packages.
+
+The first shared release must retain this squash-merge input so Release Please
+classifies the new Node contract as the selected pre-1.0 minor release:
+
+```text
+feat!: add lockstep KIS-NET package surfaces
+
+BREAKING CHANGE: Node consumers must migrate from the legacy error behavior to the structured error codes and serialized error details.
+```
+
+## Release hold
+
+The Release Please job runs only when the Actions repository variable
+`RELEASE_PLEASE_ENABLED` is exactly `true`. Leave it unset or false until the
+external setup below is complete and `0.2.0` remains the approved target. After
+enabling it, manually dispatch the Release Please workflow or land the approved
+breaking Conventional Commit on `main`. Setting the variable does not publish
+or merge anything; the generated release PR remains a separate review gate.
 
 ## Required external setup
 
@@ -76,9 +95,9 @@ publisher identity; the PyPI identity is bound to `release-python.yml`.
 ## Automated flow
 
 1. Land releasable work on `main` with an accurate Conventional Commit.
-2. `.github/workflows/release-please.yml` opens or updates one combined release
-   PR. Review both package versions, both changelogs, the manifest, `bun.lock`,
-   and `packages/python/uv.lock`.
+2. With `RELEASE_PLEASE_ENABLED=true`, `.github/workflows/release-please.yml`
+   opens or updates one combined release PR. Review both package versions, both
+   changelogs, the manifest, `bun.lock`, and `packages/python/uv.lock`.
 3. Confirm the exact shared version explicitly before merging that specific
    release PR.
 4. After merge, Release Please creates `node-vX.Y.Z` and `python-vX.Y.Z` plus
@@ -108,6 +127,7 @@ bun run validate
 bun run test
 bun run build
 bun run pack:node
+bun run pack:python
 ```
 
 `bun run release:check` asserts package/manifest/lock version equality, linked
