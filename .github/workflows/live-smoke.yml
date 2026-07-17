@@ -91,7 +91,7 @@ jobs:
         run: uv sync --locked
         working-directory: packages/python
 
-      - name: Run live Python smoke
+      - name: Run live Python tests
         shell: bash
         env:
           INPUT_BASE_DATE: ${{ inputs.base_date }}
@@ -101,8 +101,9 @@ jobs:
           BASE_DATE=${INPUT_BASE_DATE:-$(date -u +%F)}
           KIND=${INPUT_KIND:-국채}
           LOOKBACK=${INPUT_LOOKBACK:-10}
-          uv run --locked python scripts/smoke.py \
-            --base-date "$BASE_DATE" \
-            --kind "$KIND" \
-            --previous-available-days "$LOOKBACK"
+          uv run --locked pytest tests/test_live.py \
+            --live-kisnet \
+            --live-base-date "$BASE_DATE" \
+            --live-kind "$KIND" \
+            --live-lookback "$LOOKBACK"
         working-directory: packages/python

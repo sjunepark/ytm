@@ -15,6 +15,7 @@
     "test": "bun run test:node && bun run test:python",
     "test:node": "bun run --filter @sjunepark/ytm test",
     "test:python": "uv run --locked --project packages/python pytest packages/python/tests",
+    "test:python:live": "uv run --locked --project packages/python pytest packages/python/tests/test_live.py --live-kisnet",
     "contracts:check": "node scripts/contracts-hash.mjs --check",
     "contracts:sync": "node scripts/contracts-hash.mjs",
     "release:check": "node scripts/validate-release.mjs",
