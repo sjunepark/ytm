@@ -73,6 +73,12 @@ check(fixtureResult.rows[0]?.yieldText["3M"] === contract.expectations.matrix.th
 check(String(fixtureResult.rows[0]?.yields["10Y"]) === String(Number(contract.expectations.matrix.tenYear)), "matrix fixture must expose numeric yields");
 check(capturedRequests.some(({ url, body }) => url.endsWith(contract.request.initEndpoint) && body.includes(`<Col id="calBaseDt">${contract.request.baseDateCompact}</Col>`)), "init request must map baseDate to calBaseDt using compact form");
 check(capturedRequests.some(({ url, body }) => url.endsWith(contract.request.matrixEndpoint) && body.includes(`<Col id="cboYtmSort">${contract.request.kind.code}</Col>`)), "matrix request must map kind to cboYtmSort using source code");
+check(capturedRequests.every(({ signal }) => signal instanceof AbortSignal), "requests without a caller signal must receive a default timeout signal");
+
+const callerAbort = new AbortController();
+const callerSignalRequests = [];
+await toolset.execute("kinds", { baseDate: contract.request.baseDate }, { fetch: fixtureFetch(fixtures.matrix, callerSignalRequests), signal: callerAbort.signal });
+check(callerSignalRequests[0]?.signal === callerAbort.signal, "requests must preserve a caller-provided abort signal");
 
 const missingValueResult = await toolset.execute("matrix", { baseDate: contract.request.baseDate, kind: contract.request.kind.name }, { fetch: fixtureFetch(fixtures.missingValues) });
 for (const tenor of contract.expectations.missingValues.nullTenors) {
@@ -163,7 +169,7 @@ function fakeUnavailableFetch(url) {
 
 function fixtureFetch(matrixFixture, capturedRequests = []) {
   return (url, init) => {
-    const request = { url: String(url), body: String(init?.body || "") };
+    const request = { url: String(url), body: String(init?.body || ""), signal: init?.signal };
     capturedRequests.push(request);
     return xmlResponse(request.url.endsWith(contract.request.initEndpoint) ? fixtures.init : matrixFixture);
   };

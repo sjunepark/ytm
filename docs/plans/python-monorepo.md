@@ -17,9 +17,9 @@ existing Node check name and npm pack contract. Release Please owns two linked
 components at the historical `0.1.1` baseline, and component-tag workflows are
 ready for OIDC publication after their external trusted publishers exist.
 
-Next: explicitly select the first shared version and complete the documented
-external publisher setup before creating or merging a release PR. Those actions
-remain outside this repository-local implementation.
+Next: complete the documented external publisher setup and explicitly approve
+the selected `0.2.0` target before creating or merging a release PR. Those
+actions remain outside this repository-local implementation.
 
 ## Objective
 
@@ -174,8 +174,8 @@ Node and Python packages as two interfaces to one product.
 
 The existing unprefixed tags remain historical. Do not switch workflows or
 documentation to component-prefixed tags until the monorepo migration is
-complete. The first shared release version is intentionally undecided and must
-be confirmed before any release PR merge, tag, or registry publication.
+complete. The selected first shared release is `0.2.0`, pending explicit
+approval before any release PR merge, tag, or registry publication.
 
 Publishing targets:
 
@@ -246,9 +246,10 @@ Python and operating-system target.
   PyPI workflows, OIDC environment gates, version/lock/workflow assertions,
   and shared-contract attribution hashes. Frozen installs, all deterministic
   package gates, workflow YAML parsing, the official Release Please schema,
-  and uv's no-publish artifact check pass. No release version was selected and
-  no external publisher, PR, tag, or registry state was changed. Next: shipped
-  documentation and a final public-interface review.
+  and uv's no-publish artifact check pass. At that checkpoint no release
+  version had been selected, and no external publisher, PR, tag, or registry
+  state was changed. Next: shipped documentation and a final public-interface
+  review.
 - 2026-07-16: Updated the product contract, both package READMEs, the published
   Node specification, and the repository skill for the shipped two-language
   surfaces. Full validation, local link checks, skill discovery, npm pack

@@ -5,6 +5,7 @@ const LIST_ENDPOINT = "/rateInfo/ytmMatrixMobileList.do";
 const FALLBACK_PREVIOUS_AVAILABLE = "previous-available";
 const DEFAULT_LOOKBACK_DAYS = 10;
 const MAX_LOOKBACK_DAYS = 31;
+const DEFAULT_REQUEST_TIMEOUT_MS = 20_000;
 
 const STATIC_KINDS = [
   { code: "10", name: "국채" },
@@ -532,6 +533,7 @@ async function postNexacroXml(endpoint, body, context = {}) {
   if (typeof fetchImpl !== "function") {
     throw new KisnetYtmError({ code: "invalid_request", reason: "No fetch implementation is available. Use Node 20.18.1+ or pass context.fetch.", recoveryHint: "Run this package with Node 20.18.1 or newer.", recoveryAction: "inspect_tool_help", recoverable: true, retryable: false });
   }
+  const signal = context.signal ?? AbortSignal.timeout(DEFAULT_REQUEST_TIMEOUT_MS);
   let response;
   try {
     response = await fetchImpl(`${SOURCE_BASE_URL}${endpoint}`, {
@@ -542,7 +544,7 @@ async function postNexacroXml(endpoint, body, context = {}) {
         "user-agent": "ytm/0.1.0"
       },
       body,
-      signal: context.signal
+      signal
     });
   } catch (error) {
     throw new KisnetYtmError(sourceTransportError("KIS-NET request failed before a response was received.", error));

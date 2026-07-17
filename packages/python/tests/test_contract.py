@@ -52,10 +52,13 @@ REQUESTED_DATE = date.fromisoformat(CONTRACT["request"]["baseDate"])
 @dataclass
 class FixtureSource:
     matrix_by_date: dict[date, str]
+    empty_kind_dates: set[date] = field(default_factory=set)
     calls: list[tuple[str, date]] = field(default_factory=list)
 
     def list_kinds(self, base_date: date) -> tuple[Kind, ...]:
         self.calls.append(("kinds", base_date))
+        if base_date in self.empty_kind_dates:
+            return ()
         return parse_kinds_response(FIXTURES["init"])
 
     def fetch_rows(self, base_date: date, kind_code: str) -> tuple[dict[str, str], ...]:
@@ -141,10 +144,10 @@ def test_previous_available_probes_calendar_dates_in_order() -> None:
     resolved = date(2026, 6, 5)
     source = FixtureSource(
         {
-            previous_one: FIXTURES["unavailable"],
             previous_two: FIXTURES["unavailable"],
             resolved: FIXTURES["matrix"],
-        }
+        },
+        empty_kind_dates={previous_one},
     )
 
     result = fetch_matrix_from_source(
@@ -159,7 +162,6 @@ def test_previous_available_probes_calendar_dates_in_order() -> None:
     assert result.date_resolution.used_previous_available
     assert source.calls == [
         ("kinds", previous_one),
-        ("matrix:10", previous_one),
         ("kinds", previous_two),
         ("matrix:10", previous_two),
         ("kinds", resolved),

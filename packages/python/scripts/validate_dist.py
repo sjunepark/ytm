@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import inspect
 import json
 import os
 import subprocess
@@ -24,10 +25,22 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def run(command: list[str], *, cwd: Path) -> None:
+def run(
+    command: list[str],
+    *,
+    cwd: Path,
+    environment_updates: dict[str, str] | None = None,
+) -> None:
     environment = os.environ.copy()
     environment.pop("VIRTUAL_ENV", None)
+    environment.update(environment_updates or {})
     subprocess.run(command, cwd=cwd, check=True, env=environment)
+
+
+def environment_python(environment: Path) -> Path:
+    if os.name == "nt":
+        return environment / "Scripts" / "python.exe"
+    return environment / "bin" / "python"
 
 
 def validate_wheel(wheel_path: Path) -> None:
@@ -74,7 +87,10 @@ def extract_safely(
         target = (destination / member.name).resolve()
         if target != expected_root and not target.is_relative_to(expected_root):
             raise RuntimeError(f"unsafe sdist member: {member.name}")
-    archive.extractall(destination, filter="data")
+    if "filter" in inspect.signature(archive.extractall).parameters:
+        archive.extractall(destination, filter="data")
+    else:
+        archive.extractall(destination)
 
 
 def main() -> None:
@@ -101,17 +117,46 @@ def main() -> None:
 
         extracted_root = temporary_path / distribution_name
         rebuilt_wheels = temporary_path / "rebuilt-wheel"
+        test_environment = temporary_path / "test-environment"
         run(
             ["uv", "build", "--wheel", "--out-dir", str(rebuilt_wheels)],
             cwd=extracted_root,
         )
+        rebuilt_wheel_paths = sorted(rebuilt_wheels.glob(f"{distribution_name}-*.whl"))
+        if len(rebuilt_wheel_paths) != 1:
+            raise RuntimeError(
+                f"expected exactly one wheel rebuilt from the sdist, found: {rebuilt_wheel_paths}"
+            )
         run(
-            ["uv", "sync", "--locked", "--python", args.python_version],
-            cwd=extracted_root,
+            [
+                "uv",
+                "sync",
+                "--locked",
+                "--no-install-project",
+                "--project",
+                str(extracted_root),
+                "--python",
+                args.python_version,
+            ],
+            cwd=temporary_path,
+            environment_updates={"UV_PROJECT_ENVIRONMENT": str(test_environment)},
+        )
+        test_python = environment_python(test_environment)
+        run(
+            [
+                "uv",
+                "pip",
+                "install",
+                "--python",
+                str(test_python),
+                "--no-deps",
+                str(rebuilt_wheel_paths[0]),
+            ],
+            cwd=temporary_path,
         )
         run(
-            ["uv", "run", "--locked", "--python", args.python_version, "pytest"],
-            cwd=extracted_root,
+            [str(test_python), "-m", "pytest", str(extracted_root / "tests")],
+            cwd=temporary_path,
         )
 
     message = "Python distributions valid: wheel excludes tests; sdist tests pass"

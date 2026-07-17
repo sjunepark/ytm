@@ -146,4 +146,4 @@ jobs:
 
       - name: Publish Python package
         shell: bash
-        run: uv publish --check-url https://pypi.org/simple/kisnet-ytm/ --trusted-publishing always dist/*
+        run: uv publish --check-url https://pypi.org/simple/ --trusted-publishing always dist/*

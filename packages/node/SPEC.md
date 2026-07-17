@@ -58,7 +58,7 @@ ytm kinds [--base-date <기준일>] [--format json|csv|tsv] [--pretty]
 - `rows`: one per `적용대상채권`, with `pricingGroupCode`, `pricingGroupName`, numeric `yields`, raw `yieldText`, and raw source columns
 - `source`: endpoint and request metadata
 
-`-` yield cells are represented as `null` in `yields` and preserved in `yieldText`.
+`-` or empty yield cells are represented as `null` in `yields` and preserved in `yieldText`.
 
 Successful matrices contain at least one row. Missing required columns and
 invalid numeric cells are `source_format_error`; network and HTTP failures are
