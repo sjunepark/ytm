@@ -159,8 +159,13 @@ def test_nonzero_protocol_statuses_fail_closed(fixture_name: str) -> None:
 def test_nonzero_protocol_statuses_fail_closed_for_kind_responses(
     fixture_name: str,
 ) -> None:
-    with pytest.raises(SourceProtocolError):
+    expected = CONTRACT["expectations"]["protocolStatuses"][fixture_name]
+
+    with pytest.raises(SourceProtocolError) as caught:
         parse_kinds_response(FIXTURES[fixture_name])
+
+    assert caught.value.error_code == expected["errorCode"]
+    assert caught.value.error_message == expected["errorMessage"]
 
 
 @pytest.mark.parametrize("error_code", ["00", "+0", "-0"])
