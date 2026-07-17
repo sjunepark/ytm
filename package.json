@@ -9,6 +9,7 @@
     "build": "bun run build:node && bun run build:python",
     "build:node": "bun run --filter @sjunepark/ytm build",
     "build:python": "uv build --project packages/python",
+    "sync:python": "uv sync --locked --project packages/python",
     "validate": "bun run contracts:check && bun run release:check && bun run validate:node && bun run validate:python",
     "validate:node": "bun run --filter @sjunepark/ytm validate",
     "validate:python": "uv run --locked --project packages/python ruff format --check packages/python && uv run --locked --project packages/python ruff check packages/python && uv run --locked --project packages/python ty check packages/python",
