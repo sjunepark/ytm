@@ -89,7 +89,7 @@ Input:
 
 Result includes resolved `kind`, tenor labels, rows by `적용대상채권`, numeric yields, raw source cell text, source request metadata, and `dateResolution` metadata. Source `-` cells become `null` in `yields` and remain `-` in `yieldText`.
 
-Fallback continues only after KIS-NET confirms that data is unavailable. A network or HTTP failure returns `source_transport_error`; malformed XML, missing required columns, and invalid numeric cells return `source_format_error` immediately.
+Fallback continues only after KIS-NET confirms that data is unavailable. A network or HTTP failure returns `source_transport_error`; any nonzero Nexacro `ErrorCode`, including a positive warning, returns `source_protocol_error` with `sourceErrorCode` and `sourceErrorMessage`; malformed XML, missing required columns, and invalid numeric cells return `source_format_error` immediately.
 
 ### `kinds`
 

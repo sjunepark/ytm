@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
+import re
 from datetime import date
 from html import escape
 from xml.etree import ElementTree
 
-from .errors import SourceFormatError
+from .errors import SourceFormatError, SourceProtocolError
 from .models import Kind
 
 SOURCE_BASE_URL = "https://kis-net.kr"
 INIT_ENDPOINT = "/rateInfo/ytmMatrixMobileInitList.do"
 MATRIX_ENDPOINT = "/rateInfo/ytmMatrixMobileList.do"
+ERROR_CODE_PATTERN = re.compile(r"[+-]?[0-9]+")
 
 TENORS: tuple[tuple[str, str], ...] = (
     ("m3", "3M"),
@@ -37,7 +39,7 @@ def build_request_xml(base_date: date, kind_code: str, *, initial: bool) -> str:
     endpoint = INIT_ENDPOINT if initial else MATRIX_ENDPOINT
     service_id = "search" if initial else "search1"
     out_datasets = "ds_tymSort=output1 ds_list=output2" if initial else "ds_list=output1"
-    compact_date = base_date.strftime("%Y%m%d")
+    compact_date = f"{base_date.year:04d}{base_date.month:02d}{base_date.day:02d}"
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Root xmlns="http://www.nexacroplatform.com/platform/dataset">
   <Parameters/>
@@ -76,7 +78,7 @@ def build_request_xml(base_date: date, kind_code: str, *, initial: bool) -> str:
 </Root>"""
 
 
-def parse_kinds_response(xml: str) -> tuple[Kind, ...]:
+def parse_kinds_response(xml: str | bytes) -> tuple[Kind, ...]:
     rows = _parse_dataset(xml, "output1")
     kinds: list[Kind] = []
     for row in rows:
@@ -88,28 +90,29 @@ def parse_kinds_response(xml: str) -> tuple[Kind, ...]:
     return tuple(kinds)
 
 
-def parse_matrix_response(xml: str) -> tuple[dict[str, str], ...]:
+def parse_matrix_response(xml: str | bytes) -> tuple[dict[str, str], ...]:
     return _parse_dataset(xml, "output1")
 
 
-def _parse_dataset(xml: str, dataset_id: str) -> tuple[dict[str, str], ...]:
+def _parse_dataset(xml: str | bytes, dataset_id: str) -> tuple[dict[str, str], ...]:
     try:
         root = ElementTree.fromstring(xml)
-    except ElementTree.ParseError as error:
+    except (ElementTree.ParseError, LookupError, ValueError) as error:
         raise SourceFormatError("KIS-NET returned malformed Nexacro XML") from error
 
-    error_code = next(
-        (
-            (element.text or "").strip()
-            for element in root.iter()
-            if _local_name(element.tag) == "Parameter" and element.get("id") == "ErrorCode"
-        ),
-        None,
-    )
+    error_code = _find_parameter(root, "ErrorCode")
     if error_code is None:
         raise SourceFormatError("KIS-NET response is missing the required ErrorCode parameter")
-    if error_code != "0":
-        raise SourceFormatError(f"KIS-NET returned protocol ErrorCode {error_code}")
+    if ERROR_CODE_PATTERN.fullmatch(error_code) is None:
+        raise SourceFormatError("KIS-NET response contains an invalid ErrorCode parameter")
+    if error_code.lstrip("+-").strip("0"):
+        error_message = _find_parameter(root, "ErrorMsg") or _find_parameter(root, "ErrorMessage")
+        message_suffix = f" ({error_message})" if error_message else ""
+        raise SourceProtocolError(
+            f"KIS-NET returned nonzero Nexacro ErrorCode {error_code}{message_suffix}",
+            error_code=error_code,
+            error_message=error_message,
+        )
 
     dataset = next(
         (
@@ -132,6 +135,17 @@ def _parse_dataset(xml: str, dataset_id: str) -> tuple[dict[str, str], ...]:
                 row[column.get("id", "")] = column.text or ""
         rows.append(row)
     return tuple(rows)
+
+
+def _find_parameter(root: ElementTree.Element, parameter_id: str) -> str | None:
+    return next(
+        (
+            (element.text or "").strip()
+            for element in root.iter()
+            if _local_name(element.tag) == "Parameter" and element.get("id") == parameter_id
+        ),
+        None,
+    )
 
 
 def _local_name(tag: str) -> str:

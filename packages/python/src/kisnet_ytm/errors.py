@@ -58,6 +58,46 @@ class SourceTransportError(YtmError):
     code = "source_transport"
 
 
+class SourceProtocolError(YtmError):
+    """KIS-NET returned a nonzero Nexacro protocol status."""
+
+    code = "source_protocol"
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        error_code: str,
+        error_message: str | None,
+    ) -> None:
+        super().__init__(message)
+        self.error_code = error_code
+        self.error_message = error_message
+
+    def __reduce__(
+        self,
+    ) -> tuple[
+        Callable[[str, str, str | None], SourceProtocolError],
+        tuple[str, str, str | None],
+    ]:
+        return (
+            _restore_source_protocol_error,
+            (str(self), self.error_code, self.error_message),
+        )
+
+
+def _restore_source_protocol_error(
+    message: str,
+    error_code: str,
+    error_message: str | None,
+) -> SourceProtocolError:
+    return SourceProtocolError(
+        message,
+        error_code=error_code,
+        error_message=error_message,
+    )
+
+
 class SourceFormatError(YtmError):
     """KIS-NET returned data that violates the expected source schema."""
 

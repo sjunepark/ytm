@@ -39,8 +39,8 @@ Matrix lookup uses:
   resolution.
 - Fallback tries the requested date first, then earlier calendar dates in order
   within the caller's bounded window.
-- Only a confirmed no-data response advances fallback. Transport and source
-  format failures stop immediately.
+- Only a confirmed no-data response advances fallback. Transport, nonzero
+  Nexacro protocol status, and source-format failures stop immediately.
 - A successful matrix contains at least one row and records the requested,
   attempted, and resolved dates.
 - Missing `-` or empty yield cells become null-like values while the original
@@ -75,8 +75,10 @@ A Node matrix uses camelCase fields: `baseDate`, `requestedBaseDate`,
 and raw columns. Source missing values are `null` in `yields`.
 
 Node source failures use `source_data_unavailable`, `source_transport_error`,
-and `source_format_error`. Validation failures retain the CLI/toolset's more
-specific structured codes and recovery metadata.
+`source_protocol_error`, and `source_format_error`. A protocol error preserves
+the nonzero Nexacro status as `sourceErrorCode` and `sourceErrorMessage`.
+Validation failures retain the CLI/toolset's more specific structured codes
+and recovery metadata.
 
 ## Python surface
 
@@ -98,5 +100,7 @@ A Python `Matrix` uses snake_case fields: `base_date`, `requested_date`,
 structure. Each row also preserves `yield_text` and raw columns.
 
 Public Python failures inherit `YtmError`: `InvalidInputError`,
-`DataUnavailableError`, `SourceTransportError`, and `SourceFormatError`.
-`DataUnavailableError` exposes the requested and attempted dates.
+`DataUnavailableError`, `SourceTransportError`, `SourceProtocolError`, and
+`SourceFormatError`. `DataUnavailableError` exposes the requested and attempted
+dates. `SourceProtocolError` exposes the nonzero Nexacro `error_code` and
+`error_message`.

@@ -58,7 +58,8 @@ def validate_sdist_members(archive: tarfile.TarFile, root_name: str) -> None:
     contract_prefix = f"{root_name}/contracts/kisnet"
     cases_path = f"{contract_prefix}/cases.json"
     tests_path = f"{root_name}/tests/test_contract.py"
-    missing = {cases_path, tests_path} - names
+    build_hook_path = f"{root_name}/hatch_build.py"
+    missing = {build_hook_path, cases_path, tests_path} - names
     if missing:
         raise RuntimeError(f"sdist is missing required test assets: {sorted(missing)}")
 
@@ -116,13 +117,21 @@ def main() -> None:
             extract_safely(archive, temporary_path, distribution_name)
 
         extracted_root = temporary_path / distribution_name
-        rebuilt_wheels = temporary_path / "rebuilt-wheel"
+        rebuilt_distributions = temporary_path / "rebuilt-distributions"
         test_environment = temporary_path / "test-environment"
         run(
-            ["uv", "build", "--wheel", "--out-dir", str(rebuilt_wheels)],
+            ["uv", "build", "--out-dir", str(rebuilt_distributions)],
             cwd=extracted_root,
         )
-        rebuilt_wheel_paths = sorted(rebuilt_wheels.glob(f"{distribution_name}-*.whl"))
+        rebuilt_sdist_path = rebuilt_distributions / f"{distribution_name}.tar.gz"
+        if not rebuilt_sdist_path.is_file():
+            raise RuntimeError(
+                f"expected source distribution rebuilt from the sdist: {rebuilt_sdist_path}"
+            )
+        with tarfile.open(rebuilt_sdist_path, "r:gz") as rebuilt_archive:
+            validate_sdist_members(rebuilt_archive, distribution_name)
+
+        rebuilt_wheel_paths = sorted(rebuilt_distributions.glob(f"{distribution_name}-*.whl"))
         if len(rebuilt_wheel_paths) != 1:
             raise RuntimeError(
                 f"expected exactly one wheel rebuilt from the sdist, found: {rebuilt_wheel_paths}"
@@ -155,7 +164,7 @@ def main() -> None:
             cwd=temporary_path,
         )
         run(
-            [str(test_python), "-m", "pytest", str(extracted_root / "tests")],
+            [str(test_python), "-I", "-m", "pytest", str(extracted_root / "tests")],
             cwd=temporary_path,
         )
 

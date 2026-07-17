@@ -61,7 +61,7 @@ class CurlCffiSource:
         body = build_request_xml(base_date, kind_code, initial=False)
         return parse_matrix_response(self._post(MATRIX_ENDPOINT, body))
 
-    def _post(self, endpoint: str, body: str) -> str:
+    def _post(self, endpoint: str, body: str) -> bytes:
         try:
             response = self._session.post(f"{SOURCE_BASE_URL}{endpoint}", data=body.encode())
         except (CurlError, OSError) as error:
@@ -74,4 +74,4 @@ class CurlCffiSource:
         )
         if response.status_code != 200:
             raise SourceTransportError(f"KIS-NET returned HTTP {response.status_code}")
-        return response.text
+        return response.content

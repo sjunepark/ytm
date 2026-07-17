@@ -32,6 +32,7 @@ class DateResolution(_ResultModel):
         default=None,
         ge=0,
         le=_MAX_PREVIOUS_AVAILABLE_DAYS,
+        strict=True,
     )
     used_previous_available: bool
 
@@ -41,6 +42,22 @@ class DateResolution(_ResultModel):
             raise ValueError("attempted_dates must begin with requested_date")
         if self.attempted_dates[-1] != self.resolved_date:
             raise ValueError("attempted_dates must end with resolved_date")
+        if any(
+            previous.toordinal() - current.toordinal() != 1
+            for previous, current in zip(
+                self.attempted_dates,
+                self.attempted_dates[1:],
+                strict=False,
+            )
+        ):
+            raise ValueError("attempted_dates must be consecutive dates in descending order")
+        if self.previous_available_days is None and len(self.attempted_dates) != 1:
+            raise ValueError("exact-date resolution must contain only requested_date")
+        if (
+            self.previous_available_days is not None
+            and len(self.attempted_dates) > self.previous_available_days + 1
+        ):
+            raise ValueError("attempted_dates exceeds previous_available_days")
         if self.used_previous_available != (self.requested_date != self.resolved_date):
             raise ValueError("used_previous_available must reflect the resolved date")
         return self

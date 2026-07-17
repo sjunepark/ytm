@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 
@@ -12,6 +13,8 @@ from .errors import DataUnavailableError, InvalidInputError, SourceFormatError
 from .models import _MAX_PREVIOUS_AVAILABLE_DAYS, DateResolution, Kind, Matrix, MatrixRow
 
 logger = logging.getLogger(__name__)
+
+_DECIMAL_TEXT = re.compile(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)")
 
 STATIC_KINDS: tuple[Kind, ...] = (
     Kind(code="10", name="국채"),
@@ -126,6 +129,10 @@ def _normalize_row(row: dict[str, str]) -> MatrixRow:
         if raw in {"", "-"}:
             yields[tenor] = None
             continue
+        if _DECIMAL_TEXT.fullmatch(raw) is None:
+            raise SourceFormatError(
+                f"KIS-NET matrix column {source_key} contains an invalid numeric value"
+            )
         try:
             value = Decimal(raw)
         except InvalidOperation as error:

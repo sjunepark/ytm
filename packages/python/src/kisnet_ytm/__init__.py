@@ -5,6 +5,7 @@ from .errors import (
     DataUnavailableError,
     InvalidInputError,
     SourceFormatError,
+    SourceProtocolError,
     SourceTransportError,
     YtmError,
 )
@@ -18,6 +19,7 @@ __all__ = [
     "Matrix",
     "MatrixRow",
     "SourceFormatError",
+    "SourceProtocolError",
     "SourceTransportError",
     "YtmError",
     "fetch_matrix",

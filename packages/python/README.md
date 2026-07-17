@@ -39,7 +39,8 @@ print(matrix.date_resolution.used_previous_available)
 ```
 
 Fallback continues only when KIS-NET confirms that matrix data is unavailable.
-Transport and source-format errors stop immediately.
+Transport, nonzero Nexacro protocol statuses, and source-format errors stop
+immediately.
 
 ## Kinds and results
 
@@ -69,6 +70,8 @@ All public package errors inherit `YtmError`:
 - `DataUnavailableError`: no data for every attempted date; exposes
   `requested_date` and `attempted_dates`
 - `SourceTransportError`: request or HTTP failure
+- `SourceProtocolError`: nonzero Nexacro `ErrorCode`; exposes the source
+  `error_code` and `error_message`
 - `SourceFormatError`: malformed XML, missing required columns, or invalid data
 
 The package uses standard-library logging under `kisnet_ytm` and installs no

@@ -1,8 +1,7 @@
 # Python Package and Monorepo Plan
 
-Status: repository-local implementation complete. Both language packages,
-shared contract validation, live smoke coverage, repository-side release
-automation, shipped-state documentation, and final review are complete.
+Status: repository-local implementation, robustness fixes, and cross-language
+Nexacro status policy are complete.
 
 Last updated: 2026-07-17.
 
@@ -10,16 +9,17 @@ Last updated: 2026-07-17.
 
 `packages/python` now builds `kisnet-ytm` for Python 3.11-3.14 with Pydantic
 models, `Decimal` yields, the private curl-cffi source seam, explicit typed
-errors, safe logging, and ordered previous-date resolution. Node and Python
-consume the same shared fixtures. CI covers Python quality, the supported
-version matrix, artifacts, and a clean wheel import while preserving the
-existing Node check name and npm pack contract. Release Please owns two linked
-components at the historical `0.1.1` baseline, and component-tag workflows are
-ready for OIDC publication after their external trusted publishers exist.
+errors, safe logging, and validated previous-date resolution histories. Node
+and Python consume the same shared fixtures. Source archives rebuild from their
+own extracted contents, and registry workflows resolve component tags once and
+pin downstream jobs to the resulting commit. CI covers Python quality, the
+supported version matrix, artifacts, and a clean wheel import while preserving
+the existing Node check name and npm pack contract. Release Please owns two
+linked components at the historical `0.1.1` baseline.
 
 Next: complete the documented external publisher setup and explicitly approve
 the selected `0.2.0` target before creating or merging a release PR. Those
-actions remain outside this repository-local implementation.
+external actions remain outside this repository-local implementation.
 
 ## Objective
 
@@ -83,7 +83,7 @@ The initial public interface consists of:
 - `list_kinds(...)`
 - Pydantic result models for matrices, rows, kinds, and date resolution
 - `YtmError` with specific invalid-input, unavailable-data, source-transport,
-  and source-format subclasses
+  source-protocol, and source-format subclasses
 
 Do not expose curl-cffi sessions, Nexacro records, internal transport types, or
 the Node toolset's `execute(operation, input)` shape. Add an asynchronous
@@ -97,7 +97,10 @@ one.
 - `previous_available_days=N`, for `0 <= N <= 31`, tries the requested date and
   then at most `N` earlier calendar dates in order.
 - Previous-date probing continues only after KIS-NET confirms that matrix data
-  is unavailable. Transport and source-format failures stop immediately.
+  is unavailable. Transport, nonzero Nexacro status, and source-format failures
+  stop immediately.
+- Every signed-integer Nexacro `ErrorCode` other than zero fails closed,
+  including positive warnings, and preserves the source code and message.
 - Results record the requested date, resolved date, and every attempted date.
 - Yield values use `Decimal`; source `-` or empty yield cells become `None`.
 - Successful matrices contain at least one row. Invalid numeric cells and
@@ -153,8 +156,8 @@ exercise the same cases and preserve these shared semantics:
 - canonical tenor order
 - `-` and empty-cell handling
 - exact and previous-available date resolution
-- distinction between unavailable data, transport failure, and malformed
-  source data
+- distinction between unavailable data, transport failure, nonzero protocol
+  status, and malformed source data
 
 Semantic parity does not require identical JavaScript and Python object shapes
 or field casing. Each package should remain idiomatic for its language.
@@ -259,15 +262,16 @@ Python and operating-system target.
   extreme value can exhaust resources or raise an untyped date overflow.
   Next: confirm whether to adopt the 31-day Python cap and boundary tests.
 - 2026-07-17: Adopted the approved Python fallback contract of `None` or
-  `0..31`, matching Node's operational bound. Boundary tests also reject date
-  windows before `datetime.date.min` with `InvalidInputError`, so resource use
-  is bounded and the typed-error contract is preserved. The exported Pydantic
-  model enforces the same maximum. Nineteen tests pass on Python 3.11-3.14;
-  root validation/build/package gates, clean-wheel schema validation, skill
-  discovery, and a live Python source check pass. Final review found no
-  remaining decision or residual repository-local risk. Next: follow
-  `docs/release.md` only after explicitly selecting the first shared version
-  and completing external publisher setup.
+  `0..31`, completed a package-wide robustness review, and made Nexacro status
+  handling fail closed across Node and Python. Negative errors and positive
+  warnings now use a distinct protocol error with preserved source status;
+  malformed status text remains a format error, and fallback cannot hide either
+  case. Request dates are platform-stable, XML encoding follows the payload
+  declaration, numeric source text uses the shared grammar, resolution models
+  reject impossible histories, extracted source archives rebuild recursively,
+  and both registry workflows pin downstream jobs to one immutable release
+  commit. Next: external publisher setup, explicit `0.2.0` approval, and any
+  release action.
 
 ## Non-goals for the initial release
 

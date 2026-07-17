@@ -36,6 +36,8 @@ const TENORS = [
 ];
 const REQUIRED_MATRIX_COLUMNS = ["pricingGroupCode", "pricingGroupName", ...TENORS.map(([key]) => key)];
 const DECIMAL_TEXT = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/;
+const ERROR_CODE_TEXT = /^[+-]?[0-9]+$/;
+const ZERO_ERROR_CODE_TEXT = /^[+-]?0+$/;
 
 const operationSpecs = [
   {
@@ -565,9 +567,12 @@ async function postNexacroXml(endpoint, body, context = {}) {
   if (errorCode === undefined) {
     throw new KisnetYtmError(sourceFormatError("KIS-NET response is missing the required ErrorCode parameter."));
   }
-  if (errorCode !== "0") {
+  if (!ERROR_CODE_TEXT.test(errorCode)) {
+    throw new KisnetYtmError(sourceFormatError("KIS-NET response contains an invalid ErrorCode parameter."));
+  }
+  if (!ZERO_ERROR_CODE_TEXT.test(errorCode)) {
     const errorMessage = parseParameter(text, "ErrorMsg") || parseParameter(text, "ErrorMessage");
-    throw new KisnetYtmError(sourceFormatError(`KIS-NET returned protocol ErrorCode ${errorCode}${errorMessage ? ` (${errorMessage})` : ""}.`));
+    throw new KisnetYtmError(sourceProtocolError(errorCode, errorMessage));
   }
   return text;
 }
@@ -594,6 +599,22 @@ function sourceFormatError(reason) {
     reason,
     expected: "A valid KIS-NET Nexacro response matching the documented YTM Matrix schema",
     recoveryHint: "The KIS-NET source format may have changed; update the package before retrying.",
+    recoveryAction: "inspect_tool_help",
+    recoverable: false,
+    retryable: false
+  };
+}
+
+function sourceProtocolError(errorCode, errorMessage) {
+  return {
+    ok: false,
+    code: "source_protocol_error",
+    reason: `KIS-NET returned nonzero Nexacro ErrorCode ${errorCode}${errorMessage ? ` (${errorMessage})` : ""}.`,
+    expected: "Nexacro ErrorCode 0",
+    actual: errorCode,
+    sourceErrorCode: errorCode,
+    sourceErrorMessage: errorMessage,
+    recoveryHint: "Inspect the preserved KIS-NET status before deciding whether the request can be retried.",
     recoveryAction: "inspect_tool_help",
     recoverable: false,
     retryable: false

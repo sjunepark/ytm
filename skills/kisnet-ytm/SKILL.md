@@ -47,8 +47,8 @@ subclasses.
 - Exact-date lookup is the default; never silently substitute a date.
 - Previous-available lookup tries earlier calendar dates in order and reports
   the attempted and resolved dates.
-- Retry fallback only for confirmed unavailable data. Transport and source
-  format failures stop immediately.
+- Retry fallback only for confirmed unavailable data. Transport, nonzero
+  Nexacro protocol status, and source-format failures stop immediately.
 - Report requested and resolved dates, kind, tenors, and rows by
   `적용대상채권`.
 - Source `-` or empty yields are null-like in parsed values and preserved in

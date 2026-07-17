@@ -91,10 +91,16 @@ const ciPackageValidation = findNamedStep(ciWorkflow.jobs?.["python-package"], "
 check(ciPackageValidation?.["working-directory"] === "packages/python" && ciPackageValidation?.run === "uv run --locked --python 3.11 python scripts/validate_dist.py --python-version 3.11", "CI must validate the extracted Python source distribution from packages/python");
 
 const npmMetadata = findNamedStep(npmWorkflow.jobs?.metadata, "Validate component metadata");
+const npmMetadataCheckout = findNamedStep(npmWorkflow.jobs?.metadata, "Check out source");
+const npmValidationCheckout = findNamedStep(npmWorkflow.jobs?.npm_validation, "Check out source");
 const npmPublishJob = npmWorkflow.jobs?.publish;
+const npmPublishCheckout = findNamedStep(npmPublishJob, "Check out source");
 const npmPublish = findNamedStep(npmPublishJob, "Publish npm package");
 check(JSON.stringify(npmWorkflow.on?.push?.tags) === JSON.stringify(["node-v*.*.*"]), "npm workflow must trigger only from Node component tags");
 check(npmWorkflow.on?.workflow_dispatch?.inputs?.tag?.required === true, "npm workflow must support dispatching an existing required tag");
+check(npmMetadataCheckout?.with?.ref === "${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.sha }}", "npm metadata must resolve manual dispatches through the exact tag namespace and tag pushes through the event commit");
+check(npmWorkflow.jobs?.metadata?.outputs?.source_sha === "${{ steps.package.outputs.source_sha }}" && activeShell(npmMetadata).includes("SOURCE_SHA=$(git rev-parse HEAD)") && activeShell(npmMetadata).includes('echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"'), "npm metadata must resolve and expose the immutable release commit");
+check(npmValidationCheckout?.with?.ref === "${{ needs.metadata.outputs.source_sha }}" && npmPublishCheckout?.with?.ref === "${{ needs.metadata.outputs.source_sha }}", "npm validation and publishing must check out the immutable release commit");
 check(activeShell(npmMetadata).includes('if [ "$SOURCE_TAG" != "node-v$PACKAGE_VERSION" ]; then'), "npm metadata job must verify its component tag and version");
 check(npmPublishJob?.environment?.name === "npm", "npm publish job must use the npm GitHub environment");
 check(npmPublishJob?.permissions?.contents === "read" && npmPublishJob?.permissions?.["id-token"] === "write", "npm publish job must retain read contents and OIDC permissions");
@@ -102,7 +108,9 @@ check(npmPublish?.["working-directory"] === "packages/node", "npm publish must r
 check(activeShell(npmPublish).includes("npm publish --access public"), "npm publish job must publish the public package");
 
 const pypiMetadata = findNamedStep(pypiWorkflow.jobs?.metadata, "Validate component metadata");
+const pypiMetadataCheckout = findNamedStep(pypiWorkflow.jobs?.metadata, "Check out source");
 const pypiValidationJob = pypiWorkflow.jobs?.python_validation;
+const pypiValidationCheckout = findNamedStep(pypiValidationJob, "Check out source");
 const pypiDistributionValidation = findNamedStep(pypiValidationJob, "Validate wheel and extracted source distribution");
 const pypiUpload = findNamedStep(pypiValidationJob, "Upload Python distributions");
 const pypiPublishJob = pypiWorkflow.jobs?.publish;
@@ -110,6 +118,9 @@ const pypiDownload = findNamedStep(pypiPublishJob, "Download Python distribution
 const pypiPublish = findNamedStep(pypiPublishJob, "Publish Python package");
 check(JSON.stringify(pypiWorkflow.on?.push?.tags) === JSON.stringify(["python-v*.*.*"]), "PyPI workflow must trigger only from Python component tags");
 check(pypiWorkflow.on?.workflow_dispatch?.inputs?.tag?.required === true, "PyPI workflow must support dispatching an existing required tag");
+check(pypiMetadataCheckout?.with?.ref === "${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.sha }}", "PyPI metadata must resolve manual dispatches through the exact tag namespace and tag pushes through the event commit");
+check(pypiWorkflow.jobs?.metadata?.outputs?.source_sha === "${{ steps.package.outputs.source_sha }}" && activeShell(pypiMetadata).includes("SOURCE_SHA=$(git rev-parse HEAD)") && activeShell(pypiMetadata).includes('echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"'), "PyPI metadata must resolve and expose the immutable release commit");
+check(pypiValidationCheckout?.with?.ref === "${{ needs.metadata.outputs.source_sha }}", "PyPI validation must check out the immutable release commit");
 check(activeShell(pypiMetadata).includes('if [ "$SOURCE_TAG" != "python-v$PACKAGE_VERSION" ]; then'), "PyPI metadata job must verify its component tag and version");
 check(pypiDistributionValidation?.["working-directory"] === "packages/python" && pypiDistributionValidation?.run === "uv run --locked --python 3.11 python scripts/validate_dist.py --python-version 3.11", "PyPI release validation must test the extracted source distribution from packages/python");
 check(usesAction(pypiUpload, "actions/upload-artifact") && pypiUpload?.with?.path === "packages/python/dist/*", "PyPI validation job must upload the built distributions");

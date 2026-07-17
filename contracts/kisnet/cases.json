@@ -34,6 +34,9 @@
     "matrix": "matrix-success.xml",
     "missingValues": "matrix-missing-values.xml",
     "unavailable": "matrix-unavailable.xml",
+    "protocolError": "protocol-error.xml",
+    "protocolWarning": "protocol-warning.xml",
+    "invalidErrorCode": "invalid-error-code.xml",
     "malformed": "malformed-response.xml",
     "invalidNumeric": "matrix-invalid-numeric.xml",
     "missingColumn": "matrix-missing-column.xml"
@@ -51,6 +54,11 @@
     },
     "unavailableError": "source_data_unavailable",
     "transportError": "source_transport_error",
+    "protocolError": "source_protocol_error",
+    "protocolStatuses": {
+      "protocolError": { "errorCode": "-1", "errorMessage": "Request rejected" },
+      "protocolWarning": { "errorCode": "+1", "errorMessage": "Result requires review" }
+    },
     "formatError": "source_format_error"
   }
 }

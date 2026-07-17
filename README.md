@@ -11,9 +11,9 @@ default and explicit previous-available date resolution.
   not invoke Node.js
 
 Both packages send the same deterministic Nexacro requests and share fixtures
-for source parsing, missing values, unavailable dates, fallback order, and
-failure classification. Their language-specific result shapes are documented
-in [SPEC.md](SPEC.md).
+for source parsing, missing values, unavailable dates, protocol statuses,
+fallback order, and failure classification. Their language-specific result
+shapes are documented in [SPEC.md](SPEC.md).
 
 ## Quick start
 
