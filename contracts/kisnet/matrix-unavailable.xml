@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Root xmlns="http://www.nexacroplatform.com/platform/dataset">
+  <Parameters><Parameter id="ErrorCode">0</Parameter></Parameters>
+  <Dataset id="output1"><Rows/></Dataset>
+</Root>

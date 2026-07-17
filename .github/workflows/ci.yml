@@ -15,13 +15,13 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
 
       - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
 
       - name: Set up Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
           node-version: 24
           package-manager-cache: false
@@ -30,10 +30,114 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Build npm CLI bundle
-        run: bun run build
+        run: bun run build:node
 
       - name: Validate tool surface
-        run: bun run validate
+        run: bun run validate:node
+
+      - name: Validate shared contract and release configuration
+        run: bun run contracts:check && bun run release:check
 
       - name: Check npm package contents
-        run: npm pack --dry-run
+        run: bun run pack:node
+
+  python-quality:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          version: "0.11.21"
+          enable-cache: true
+          cache-dependency-glob: packages/python/uv.lock
+
+      - name: Install locked Python environment
+        run: uv sync --locked
+        working-directory: packages/python
+
+      - name: Check Python formatting
+        run: uv run --locked ruff format --check .
+        working-directory: packages/python
+
+      - name: Lint Python package
+        run: uv run --locked ruff check .
+        working-directory: packages/python
+
+      - name: Type-check Python package
+        run: uv run --locked ty check
+        working-directory: packages/python
+
+  python-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          version: "0.11.21"
+          enable-cache: true
+          cache-dependency-glob: packages/python/uv.lock
+          cache-suffix: py${{ matrix.python-version }}
+
+      - name: Install locked Python environment
+        run: uv sync --locked --python ${{ matrix.python-version }}
+        working-directory: packages/python
+
+      - name: Run Python contract tests
+        run: uv run --locked --python ${{ matrix.python-version }} pytest
+        working-directory: packages/python
+
+  python-package:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          version: "0.11.21"
+          enable-cache: true
+          cache-dependency-glob: packages/python/uv.lock
+
+      - name: Build wheel and source distribution
+        run: uv build
+        working-directory: packages/python
+
+      - name: Validate wheel and extracted source distribution
+        run: uv run --locked --python 3.11 python scripts/validate_dist.py --python-version 3.11
+        working-directory: packages/python
+
+      - name: Install and import the built wheel
+        shell: bash
+        run: |
+          uv venv --python 3.11 .tmp/wheel-venv
+          uv pip install --python .tmp/wheel-venv/bin/python packages/python/dist/*.whl
+          .tmp/wheel-venv/bin/python -I -c 'import kisnet_ytm; assert kisnet_ytm.list_kinds()[0].name == "국채"'

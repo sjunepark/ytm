@@ -2,6 +2,10 @@ const SOURCE_PAGE_URL = "https://kis-net.kr/kisnet_mobile/index.html";
 const SOURCE_BASE_URL = "https://kis-net.kr";
 const INIT_ENDPOINT = "/rateInfo/ytmMatrixMobileInitList.do";
 const LIST_ENDPOINT = "/rateInfo/ytmMatrixMobileList.do";
+const FALLBACK_PREVIOUS_AVAILABLE = "previous-available";
+const DEFAULT_LOOKBACK_DAYS = 10;
+const MAX_LOOKBACK_DAYS = 31;
+const DEFAULT_REQUEST_TIMEOUT_MS = 20_000;
 
 const STATIC_KINDS = [
   { code: "10", name: "국채" },
@@ -30,6 +34,8 @@ const TENORS = [
   ["y30", "30Y"],
   ["y50", "50Y"]
 ];
+const REQUIRED_MATRIX_COLUMNS = ["pricingGroupCode", "pricingGroupName", ...TENORS.map(([key]) => key)];
+const DECIMAL_TEXT = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/;
 
 const operationSpecs = [
   {
@@ -49,14 +55,27 @@ const operationSpecs = [
         kind: {
           type: ["string", "number"],
           description: "종류. Use a Korean source label such as 국채 or a source code such as 10."
+        },
+        fallback: {
+          type: "string",
+          enum: [FALLBACK_PREVIOUS_AVAILABLE],
+          description: "Optional unavailable-date policy. Use previous-available to try the requested 기준일 once, then walk backward until KIS-NET returns matrix rows."
+        },
+        lookbackDays: {
+          type: "integer",
+          minimum: 1,
+          maximum: MAX_LOOKBACK_DAYS,
+          description: `Maximum prior calendar days to try when fallback is ${FALLBACK_PREVIOUS_AVAILABLE}. Defaults to ${DEFAULT_LOOKBACK_DAYS}.`
         }
       }
     },
     resultJsonSchema: {
       type: "object",
-      required: ["baseDate", "kind", "tenors", "rows", "source"],
+      required: ["baseDate", "kind", "tenors", "rows", "source", "requestedBaseDate", "dateResolution"],
       properties: {
         baseDate: { type: "string" },
+        requestedBaseDate: { type: "string" },
+        dateResolution: { type: "object" },
         kind: { type: "object" },
         tenors: { type: "array", items: { type: "string" } },
         rows: { type: "array" },
@@ -65,13 +84,15 @@ const operationSpecs = [
     },
     examples: [
       { input: { baseDate: "2026-06-08", kind: "국채" } },
-      { input: { baseDate: "20260608", kind: "10" } }
+      { input: { baseDate: "20260608", kind: "10" } },
+      { input: { baseDate: "2026-06-07", kind: "국채", fallback: FALLBACK_PREVIOUS_AVAILABLE, lookbackDays: 10 } }
     ],
     limitations: [
-      "KIS-NET decides available 기준일 data and may return an empty matrix for non-business days or unavailable dates.",
+      "KIS-NET decides available 기준일 data and may return an empty matrix for non-business days, holidays, or unavailable dates.",
+      `With fallback=${FALLBACK_PREVIOUS_AVAILABLE}, the requested 기준일 is still tried first; previous dates are probed only after KIS-NET returns no rows.`,
       "Yield cells containing '-' are returned as null while preserving the raw cell text."
     ],
-    resultSummary: "Returns the resolved 종류, tenor labels, one row per 적용대상채권, numeric yield values, raw source cells, and source request metadata."
+    resultSummary: "Returns the resolved 종류, tenor labels, one row per 적용대상채권, numeric yield values, raw source cells, source request metadata, and date-resolution metadata."
   },
   {
     name: "kinds",
@@ -147,11 +168,14 @@ export function createKisnetYtmToolset(options = {}) {
         return [
           "matrix",
           "  Input JSON: { \"baseDate\": \"2026-06-08\", \"kind\": \"국채\" }",
+          `  Optional fallback: { "fallback": "${FALLBACK_PREVIOUS_AVAILABLE}", "lookbackDays": ${DEFAULT_LOOKBACK_DAYS} }`,
           "  baseDate maps to 기준일 and accepts YYYY-MM-DD, YYYY.MM.DD, or YYYYMMDD.",
           "  kind maps to 종류 and accepts one of these Korean labels or source codes:",
           ...formatKindsForHelp().map((line) => `    ${line}`),
+          `  fallback=${FALLBACK_PREVIOUS_AVAILABLE} tries the requested date once, then walks backward until rows are found.`,
+          `  lookbackDays defaults to ${DEFAULT_LOOKBACK_DAYS} and may not exceed ${MAX_LOOKBACK_DAYS}.`,
           "  Run kinds to print this list as JSON, CSV, or TSV.",
-          "  Result rows include 적용대상채권 and tenors 3M through 50Y."
+          "  Result rows include 적용대상채권, tenors 3M through 50Y, and dateResolution metadata."
         ].join("\n");
       }
       if (name === "kinds") {
@@ -218,12 +242,77 @@ export function validateInput(operationName, input) {
       return { valid: false, error: validationError({ operationName, code: "invalid_parameter", parameter: "kind", reason: "kind must be a 종류 label or source code.", expected: "string or number", actual: safeActual(input.kind), exampleInput: spec.examples[0].input, recoveryHint: "Use kinds to inspect accepted 종류 values, then retry with a code like 10 or label like 국채." }) };
     }
     normalized.kind = String(input.kind).trim();
+
+    if (input.fallback !== undefined) {
+      if (input.fallback !== FALLBACK_PREVIOUS_AVAILABLE) {
+        return { valid: false, error: validationError({ operationName, code: "invalid_parameter", parameter: "fallback", reason: `fallback must be ${FALLBACK_PREVIOUS_AVAILABLE}.`, expected: [FALLBACK_PREVIOUS_AVAILABLE], actual: safeActual(input.fallback), exampleInput: spec.examples[2].input, recoveryHint: `Use fallback=${FALLBACK_PREVIOUS_AVAILABLE}, or omit fallback for exact-date behavior.` }) };
+      }
+      normalized.fallback = FALLBACK_PREVIOUS_AVAILABLE;
+    }
+
+    if (input.lookbackDays !== undefined) {
+      if (input.fallback !== FALLBACK_PREVIOUS_AVAILABLE) {
+        return { valid: false, error: validationError({ operationName, code: "invalid_parameter", parameter: "lookbackDays", reason: `lookbackDays only applies when fallback is ${FALLBACK_PREVIOUS_AVAILABLE}.`, expected: { fallback: FALLBACK_PREVIOUS_AVAILABLE, lookbackDays: `integer 1-${MAX_LOOKBACK_DAYS}` }, actual: safeActual(input.lookbackDays), exampleInput: spec.examples[2].input, recoveryHint: `Add fallback=${FALLBACK_PREVIOUS_AVAILABLE}, or remove lookbackDays for exact-date behavior.` }) };
+      }
+      const lookbackDays = normalizeLookbackDays(input.lookbackDays);
+      if (lookbackDays === null) {
+        return { valid: false, error: validationError({ operationName, code: "invalid_parameter", parameter: "lookbackDays", reason: `lookbackDays must be an integer from 1 to ${MAX_LOOKBACK_DAYS}.`, expected: `integer 1-${MAX_LOOKBACK_DAYS}`, actual: safeActual(input.lookbackDays), exampleInput: spec.examples[2].input, recoveryHint: `Use a small calendar-day lookback window such as ${DEFAULT_LOOKBACK_DAYS}.` }) };
+      }
+      normalized.lookbackDays = lookbackDays;
+    } else if (input.fallback === FALLBACK_PREVIOUS_AVAILABLE) {
+      normalized.lookbackDays = DEFAULT_LOOKBACK_DAYS;
+    }
   }
 
   return { valid: true, normalizedInput: normalized };
 }
 
 async function lookupYtmMatrix(input, context) {
+  const mode = input.fallback === FALLBACK_PREVIOUS_AVAILABLE ? FALLBACK_PREVIOUS_AVAILABLE : "exact";
+  const lookbackDays = mode === FALLBACK_PREVIOUS_AVAILABLE ? input.lookbackDays : 0;
+  const attempts = buildDateAttempts(input.baseDate, lookbackDays);
+  const attemptedDates = [];
+
+  for (const attempt of attempts) {
+    attemptedDates.push(attempt.display);
+    try {
+      const result = await lookupYtmMatrixForDate({ ...input, baseDate: attempt.display, baseDateCompact: attempt.compact }, context);
+      return withDateResolution(result, {
+        mode,
+        requestedBaseDate: input.baseDate,
+        attemptedDates,
+        lookbackDays
+      });
+    } catch (error) {
+      if (isSourceDataUnavailable(error) && mode === FALLBACK_PREVIOUS_AVAILABLE && attemptedDates.length < attempts.length) continue;
+      if (isSourceDataUnavailable(error)) {
+        throw new KisnetYtmError(sourceDataUnavailableError({
+          operationName: "matrix",
+          baseDate: input.baseDate,
+          kind: input.kind,
+          attemptedDates,
+          lookbackDays,
+          fallbackExhausted: mode === FALLBACK_PREVIOUS_AVAILABLE,
+          reason: mode === FALLBACK_PREVIOUS_AVAILABLE
+            ? `KIS-NET returned no YTM Matrix rows for ${input.baseDate} or the prior ${lookbackDays} calendar day(s).`
+            : `KIS-NET returned no YTM Matrix rows for ${input.baseDate}. It may be a weekend, holiday, or unavailable source date.`
+        }));
+      }
+      throw error;
+    }
+  }
+
+  throw new KisnetYtmError(sourceDataUnavailableError({
+    operationName: "matrix",
+    baseDate: input.baseDate,
+    kind: input.kind,
+    attemptedDates,
+    lookbackDays,
+    reason: `KIS-NET returned no YTM Matrix rows for ${input.baseDate}.`
+  }));
+}
+
+async function lookupYtmMatrixForDate(input, context) {
   const kindsResult = await listYtmSorts({ baseDate: input.baseDate, baseDateCompact: input.baseDateCompact }, context);
   const kind = resolveKind(input.kind, kindsResult.kinds);
   if (!kind) {
@@ -252,6 +341,15 @@ async function lookupYtmMatrix(input, context) {
   });
   const responseXml = await postNexacroXml(LIST_ENDPOINT, xml, context);
   const sourceRows = parseDataset(responseXml, "output1");
+  if (sourceRows.length === 0) {
+    throw new KisnetYtmError(sourceDataUnavailableError({
+      operationName: "matrix",
+      baseDate: input.baseDate,
+      kind: input.kind,
+      attemptedDates: [input.baseDate],
+      reason: `KIS-NET returned no YTM Matrix rows for ${input.baseDate}. It may be a weekend, holiday, or unavailable source date.`
+    }));
+  }
 
   return {
     baseDate: input.baseDate,
@@ -295,9 +393,21 @@ async function listYtmSorts(input = {}, context = {}) {
   });
   const responseXml = await postNexacroXml(INIT_ENDPOINT, xml, context);
   const rows = parseDataset(responseXml, "output1");
+  const kinds = rows.map((row) => ({ code: String(row.divCode || "").trim(), name: String(row.divName || "").trim() }));
+  if (kinds.some((kind) => !kind.code || !kind.name)) {
+    throw new KisnetYtmError(sourceFormatError("KIS-NET kind row is missing divCode or divName."));
+  }
+  if (kinds.length === 0) {
+    throw new KisnetYtmError(sourceDataUnavailableError({
+      operationName: "kinds",
+      baseDate: input.baseDate,
+      attemptedDates: [input.baseDate],
+      reason: `KIS-NET returned no 종류 values for ${input.baseDate}. It may be a weekend, holiday, or unavailable source date.`
+    }));
+  }
   return {
     baseDate: input.baseDate,
-    kinds: rows.map((row) => ({ code: String(row.divCode || "").trim(), name: String(row.divName || "").trim() })).filter((kind) => kind.code && kind.name),
+    kinds,
     source: {
       pageUrl: SOURCE_PAGE_URL,
       endpoint: `${SOURCE_BASE_URL}${INIT_ENDPOINT}`,
@@ -313,6 +423,70 @@ async function listYtmSorts(input = {}, context = {}) {
   };
 }
 
+function withDateResolution(result, { mode, requestedBaseDate, attemptedDates, lookbackDays }) {
+  return {
+    ...result,
+    requestedBaseDate,
+    dateResolution: {
+      mode,
+      requestedBaseDate,
+      resolvedBaseDate: result.baseDate,
+      usedFallback: result.baseDate !== requestedBaseDate,
+      attemptedDates: [...attemptedDates],
+      lookbackDays
+    }
+  };
+}
+
+function buildDateAttempts(baseDate, lookbackDays) {
+  const attempts = [];
+  for (let offset = 0; offset <= lookbackDays; offset += 1) {
+    attempts.push(shiftBaseDate(baseDate, -offset));
+  }
+  return attempts;
+}
+
+function shiftBaseDate(baseDate, deltaDays) {
+  const [year, month, day] = baseDate.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day + deltaDays));
+  const yyyy = String(date.getUTCFullYear()).padStart(4, "0");
+  const mm = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(date.getUTCDate()).padStart(2, "0");
+  return { display: `${yyyy}-${mm}-${dd}`, compact: `${yyyy}${mm}${dd}` };
+}
+
+function isSourceDataUnavailable(error) {
+  return Boolean(error && typeof error === "object" && error.details?.code === "source_data_unavailable");
+}
+
+function sourceDataUnavailableError({ operationName, baseDate, kind, attemptedDates, lookbackDays = 0, fallbackExhausted = false, reason }) {
+  const fallbackHint = operationName !== "matrix"
+    ? "Try a nearby business day."
+    : fallbackExhausted
+      ? `No data was found in the fallback window. Try a known business day, or increase lookbackDays up to ${MAX_LOOKBACK_DAYS}.`
+      : `Try a nearby business day, or rerun matrix with fallback=${FALLBACK_PREVIOUS_AVAILABLE}.`;
+  const nearbyExampleDate = /^\d{4}-\d{2}-\d{2}$/.test(String(baseDate)) ? shiftBaseDate(baseDate, -1).display : "2026-06-08";
+  const matrixExampleInput = fallbackExhausted
+    ? { baseDate: nearbyExampleDate, kind: kind || "국채" }
+    : { baseDate, kind: kind || "국채", fallback: FALLBACK_PREVIOUS_AVAILABLE, lookbackDays: DEFAULT_LOOKBACK_DAYS };
+  return {
+    ok: false,
+    code: "source_data_unavailable",
+    operationName,
+    parameter: "baseDate",
+    reason,
+    expected: "KIS-NET data for an available business 기준일",
+    actual: baseDate,
+    exampleInput: operationName === "matrix" ? matrixExampleInput : { baseDate: nearbyExampleDate },
+    recoveryHint: fallbackHint,
+    recoveryAction: operationName === "matrix" && !fallbackExhausted ? "use_previous_available_fallback" : "try_nearby_business_day",
+    recoverable: true,
+    retryable: false,
+    attemptedDates: [...attemptedDates],
+    lookbackDays
+  };
+}
+
 function resolveKind(inputKind, kinds) {
   const value = String(inputKind).trim();
   return kinds.find((kind) => kind.code === value || kind.name === value || kind.name.replace(/\s+/g, "") === value.replace(/\s+/g, ""));
@@ -323,12 +497,26 @@ function formatKindsForHelp() {
 }
 
 function normalizeMatrixRow(row, kind) {
+  const missingColumns = REQUIRED_MATRIX_COLUMNS.filter((column) => !Object.hasOwn(row, column));
+  if (missingColumns.length > 0) {
+    throw new KisnetYtmError(sourceFormatError(`KIS-NET matrix row is missing required column(s): ${missingColumns.join(", ")}.`));
+  }
+  if (!String(row.pricingGroupCode).trim() || !String(row.pricingGroupName).trim()) {
+    throw new KisnetYtmError(sourceFormatError("KIS-NET matrix row contains an empty pricing group code or name."));
+  }
   const yields = {};
   const yieldText = {};
   for (const [key, label] of TENORS) {
     const raw = row[key] === undefined ? "" : String(row[key]).trim();
     yieldText[label] = raw;
-    yields[label] = raw === "" || raw === "-" ? null : Number(raw);
+    if (raw === "" || raw === "-") {
+      yields[label] = null;
+      continue;
+    }
+    if (!DECIMAL_TEXT.test(raw) || !Number.isFinite(Number(raw))) {
+      throw new KisnetYtmError(sourceFormatError(`KIS-NET matrix column ${key} contains an invalid numeric value.`));
+    }
+    yields[label] = Number(raw);
   }
   return {
     groupName: kind.name,
@@ -345,25 +533,71 @@ async function postNexacroXml(endpoint, body, context = {}) {
   if (typeof fetchImpl !== "function") {
     throw new KisnetYtmError({ code: "invalid_request", reason: "No fetch implementation is available. Use Node 20.18.1+ or pass context.fetch.", recoveryHint: "Run this package with Node 20.18.1 or newer.", recoveryAction: "inspect_tool_help", recoverable: true, retryable: false });
   }
-  const response = await fetchImpl(`${SOURCE_BASE_URL}${endpoint}`, {
-    method: "POST",
-    headers: {
-      "content-type": "text/xml; charset=UTF-8",
-      "accept": "text/xml, */*",
-      "user-agent": "ytm/0.1.0"
-    },
-    body,
-    signal: context.signal
-  });
-  const text = await response.text();
+  const signal = context.signal ?? AbortSignal.timeout(DEFAULT_REQUEST_TIMEOUT_MS);
+  let response;
+  try {
+    response = await fetchImpl(`${SOURCE_BASE_URL}${endpoint}`, {
+      method: "POST",
+      headers: {
+        "content-type": "text/xml; charset=UTF-8",
+        "accept": "text/xml, */*",
+        "user-agent": "ytm/0.1.0"
+      },
+      body,
+      signal
+    });
+  } catch (error) {
+    throw new KisnetYtmError(sourceTransportError("KIS-NET request failed before a response was received.", error));
+  }
+  let text;
+  try {
+    text = await response.text();
+  } catch (error) {
+    throw new KisnetYtmError(sourceTransportError("KIS-NET response body could not be read.", error));
+  }
   if (!response.ok) {
-    throw new KisnetYtmError({ code: "invalid_request", reason: `KIS-NET returned HTTP ${response.status}.`, expected: "HTTP 200", actual: response.status, recoveryHint: "Retry later or inspect whether KIS-NET is available.", recoveryAction: "inspect_tool_help", recoverable: true, retryable: true });
+    throw new KisnetYtmError(sourceTransportError(`KIS-NET returned HTTP ${response.status}.`, undefined, response.status));
+  }
+  if (!/<Root(?:\s|>)[\s\S]*<\/Root>\s*$/.test(text)) {
+    throw new KisnetYtmError(sourceFormatError("KIS-NET returned malformed Nexacro XML."));
   }
   const errorCode = parseParameter(text, "ErrorCode");
-  if (errorCode && errorCode !== "0") {
-    throw new KisnetYtmError({ code: "invalid_request", reason: `KIS-NET returned ErrorCode ${errorCode}.`, expected: "ErrorCode 0", actual: errorCode, recoveryHint: "Check 기준일 and 종류, then retry with valid source values.", recoveryAction: "inspect_command_help", recoverable: true, retryable: false });
+  if (errorCode === undefined) {
+    throw new KisnetYtmError(sourceFormatError("KIS-NET response is missing the required ErrorCode parameter."));
+  }
+  if (errorCode !== "0") {
+    const errorMessage = parseParameter(text, "ErrorMsg") || parseParameter(text, "ErrorMessage");
+    throw new KisnetYtmError(sourceFormatError(`KIS-NET returned protocol ErrorCode ${errorCode}${errorMessage ? ` (${errorMessage})` : ""}.`));
   }
   return text;
+}
+
+function sourceTransportError(reason, cause, status) {
+  return {
+    ok: false,
+    code: "source_transport_error",
+    reason,
+    expected: "A successful HTTP response from KIS-NET",
+    actual: status === undefined ? undefined : status,
+    recoveryHint: "Retry later or inspect whether KIS-NET is available.",
+    recoveryAction: "inspect_tool_help",
+    recoverable: true,
+    retryable: true,
+    cause: cause instanceof Error ? cause.name : undefined
+  };
+}
+
+function sourceFormatError(reason) {
+  return {
+    ok: false,
+    code: "source_format_error",
+    reason,
+    expected: "A valid KIS-NET Nexacro response matching the documented YTM Matrix schema",
+    recoveryHint: "The KIS-NET source format may have changed; update the package before retrying.",
+    recoveryAction: "inspect_tool_help",
+    recoverable: false,
+    retryable: false
+  };
 }
 
 function buildRequestXml({ serviceId, endpoint, outDatasets, baseDateCompact, kindCode }) {
@@ -373,7 +607,9 @@ function buildRequestXml({ serviceId, endpoint, outDatasets, baseDateCompact, ki
 
 function parseDataset(xml, id) {
   const match = new RegExp(`<Dataset\\s+id=["']${escapeRegExp(id)}["'][^>]*>([\\s\\S]*?)<\\/Dataset>`).exec(xml);
-  if (!match) return [];
+  if (!match) {
+    throw new KisnetYtmError(sourceFormatError(`KIS-NET response is missing required dataset ${id}.`));
+  }
   const rows = [];
   const rowPattern = /<Row[^>]*>([\s\S]*?)<\/Row>/g;
   let rowMatch;
@@ -392,6 +628,21 @@ function parseDataset(xml, id) {
 function parseParameter(xml, id) {
   const match = new RegExp(`<Parameter\\s+id=["']${escapeRegExp(id)}["'][^>]*>([\\s\\S]*?)<\\/Parameter>`).exec(xml);
   return match ? decodeXml(match[1]).trim() : undefined;
+}
+
+function extractRequestColumn(xml, id) {
+  const match = new RegExp(`<Col\\s+id=["']${escapeRegExp(id)}["'][^>]*>([\\s\\S]*?)<\\/Col>`).exec(xml);
+  return match ? decodeXml(match[1]).trim() : undefined;
+}
+
+function compactToDisplay(value) {
+  if (!/^\d{8}$/.test(String(value || ""))) return undefined;
+  return `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}`;
+}
+
+function normalizeLookbackDays(value) {
+  if (!Number.isInteger(value) || value < 1 || value > MAX_LOOKBACK_DAYS) return null;
+  return value;
 }
 
 function normalizeBaseDate(value) {

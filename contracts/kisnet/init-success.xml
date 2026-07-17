@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Root xmlns="http://www.nexacroplatform.com/platform/dataset">
+  <Parameters>
+    <Parameter id="ErrorCode">0</Parameter>
+    <Parameter id="ErrorMsg">SUCC</Parameter>
+  </Parameters>
+  <Dataset id="output1">
+    <Rows>
+      <Row><Col id="divCode">10</Col><Col id="divName">국채</Col></Row>
+      <Row><Col id="divCode">20</Col><Col id="divName">지방채</Col></Row>
+      <Row><Col id="divCode">30</Col><Col id="divName">특수채</Col></Row>
+      <Row><Col id="divCode">40</Col><Col id="divName">통안채</Col></Row>
+      <Row><Col id="divCode">50</Col><Col id="divName">은행채</Col></Row>
+      <Row><Col id="divCode">60</Col><Col id="divName">기타금융채</Col></Row>
+      <Row><Col id="divCode">70</Col><Col id="divName">회사채(무보증)</Col></Row>
+    </Rows>
+  </Dataset>
+  <Dataset id="output2"><Rows/></Dataset>
+</Root>
