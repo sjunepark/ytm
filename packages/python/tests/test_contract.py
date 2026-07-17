@@ -2,13 +2,18 @@ from __future__ import annotations
 
 import json
 import pickle
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 from typing import cast
 
 import pytest
+from curl_cffi import CurlError
+from curl_cffi.const import CurlECode
+from curl_cffi.requests import RequestsError
 from pydantic import ValidationError
 
 from kisnet_ytm import (
@@ -21,6 +26,8 @@ from kisnet_ytm import (
     list_kinds,
 )
 from kisnet_ytm._nexacro import (
+    MAX_ELEMENT_DEPTH,
+    MAX_RESPONSE_BODY_BYTES,
     build_request_xml,
     parse_kinds_response,
     parse_matrix_response,
@@ -49,6 +56,45 @@ FIXTURES = {
     for name, filename in CONTRACT["fixtures"].items()
 }
 REQUESTED_DATE = date.fromisoformat(CONTRACT["request"]["baseDate"])
+
+
+class FixtureResponseRequestError(RequestsError):
+    def __init__(self, message: str, code: CurlECode, status_code: int) -> None:
+        super().__init__(message, code, response=SimpleNamespace(status_code=status_code))
+
+
+class CallbackSession:
+    def __init__(
+        self,
+        chunks: tuple[bytes, ...],
+        *,
+        status_code: int = 200,
+        error: CurlError | None = None,
+    ) -> None:
+        self.chunks = chunks
+        self.status_code = status_code
+        self.error = error
+        self.closed = False
+        self.callback_results: list[int] = []
+
+    def post(
+        self, url: str, *, data: bytes, content_callback: Callable[[bytes], int]
+    ) -> SimpleNamespace:
+        assert url.startswith("https://kis-net.kr/")
+        assert data.startswith(b'<?xml version="1.0" encoding="UTF-8"?>')
+        if self.error is not None:
+            raise self.error
+        for chunk in self.chunks:
+            wrote = content_callback(chunk)
+            self.callback_results.append(wrote)
+            if wrote != len(chunk):
+                raise FixtureResponseRequestError(
+                    "fixture callback aborted the transfer", CurlECode.WRITE_ERROR, self.status_code
+                )
+        return SimpleNamespace(status_code=self.status_code)
+
+    def close(self) -> None:
+        self.closed = True
 
 
 @dataclass
@@ -107,24 +153,7 @@ def test_request_date_is_zero_padded_independently_of_platform_strftime() -> Non
 def test_source_preserves_xml_encoding_when_http_charset_disagrees(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    class FakeResponse:
-        status_code = 200
-        content = FIXTURES["init"].encode("utf-8")
-        text = content.decode("latin-1")
-
-    class FakeSession:
-        def __init__(self) -> None:
-            self.closed = False
-
-        def post(self, url: str, *, data: bytes) -> FakeResponse:
-            assert url.endswith("/rateInfo/ytmMatrixMobileInitList.do")
-            assert data.startswith(b'<?xml version="1.0" encoding="UTF-8"?>')
-            return FakeResponse()
-
-        def close(self) -> None:
-            self.closed = True
-
-    session = FakeSession()
+    session = CallbackSession((FIXTURES["init"].encode("utf-8"),))
     monkeypatch.setattr("kisnet_ytm._source.requests.Session", lambda **_: session)
 
     with CurlCffiSource() as source:
@@ -132,6 +161,149 @@ def test_source_preserves_xml_encoding_when_http_charset_disagrees(
 
     assert kinds[0].name == "국채"
     assert session.closed
+
+
+@pytest.mark.parametrize("xml_case", CONTRACT["xmlCases"]["valid"])
+def test_shared_valid_xml_cases(xml_case: dict[str, str]) -> None:
+    fixture = FIXTURES[xml_case["fixture"]]
+    if xml_case["operation"] == "matrix":
+        row = parse_matrix_response(fixture)[0]
+        assert row[xml_case["expectedRawColumn"]] == xml_case["expectedRawValue"]
+        if extra_column := xml_case.get("expectedExtraRawColumn"):
+            assert row[extra_column] == xml_case["expectedExtraRawValue"]
+        return
+
+    kind = parse_kinds_response(fixture)[0]
+    assert kind.code == xml_case["expectedKindCode"]
+    assert kind.name == xml_case["expectedKindName"]
+
+
+@pytest.mark.parametrize("fixture_name", CONTRACT["xmlCases"]["invalid"])
+def test_shared_invalid_xml_cases(fixture_name: str) -> None:
+    with pytest.raises(SourceFormatError):
+        parse_kinds_response(FIXTURES[fixture_name])
+
+
+def test_xml_depth_limit_accepts_boundary_and_rejects_excess() -> None:
+    response = _nested_xml_response(MAX_ELEMENT_DEPTH - 1)
+    assert parse_kinds_response(response)[0].code == "10"
+
+    with pytest.raises(SourceFormatError, match="depth"):
+        parse_kinds_response(_nested_xml_response(MAX_ELEMENT_DEPTH))
+
+
+def test_response_byte_limit_accepts_boundary_and_rejects_excess() -> None:
+    exact = _xml_at_byte_length(FIXTURES["init"], MAX_RESPONSE_BODY_BYTES).encode()
+    assert parse_kinds_response(exact)[0].code == "10"
+
+    oversized = _xml_at_byte_length(FIXTURES["init"], MAX_RESPONSE_BODY_BYTES + 1).encode()
+    with pytest.raises(SourceFormatError, match="body size"):
+        parse_kinds_response(oversized)
+
+
+def test_transport_aborts_before_buffering_past_response_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    oversized = _xml_at_byte_length(FIXTURES["init"], MAX_RESPONSE_BODY_BYTES + 1).encode()
+    session = CallbackSession((oversized[:MAX_RESPONSE_BODY_BYTES], oversized[-1:]))
+    monkeypatch.setattr("kisnet_ytm._source.requests.Session", lambda **_: session)
+
+    with CurlCffiSource() as source, pytest.raises(SourceFormatError, match="body size"):
+        source.list_kinds(REQUESTED_DATE)
+
+    assert session.callback_results[0] == MAX_RESPONSE_BODY_BYTES
+    assert session.callback_results[1] != 1
+    assert session.closed
+
+
+def test_transport_accepts_response_at_exact_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    exact = _xml_at_byte_length(FIXTURES["init"], MAX_RESPONSE_BODY_BYTES).encode()
+    session = CallbackSession((exact[:500_000], exact[500_000:]))
+    monkeypatch.setattr("kisnet_ytm._source.requests.Session", lambda **_: session)
+
+    with CurlCffiSource() as source:
+        kinds = source.list_kinds(REQUESTED_DATE)
+
+    assert kinds[0].code == "10"
+    assert session.callback_results == [500_000, MAX_RESPONSE_BODY_BYTES - 500_000]
+
+
+def test_transport_keeps_curl_failures_distinct(monkeypatch: pytest.MonkeyPatch) -> None:
+    session = CallbackSession((), error=CurlError("fixture transport failure", 7))
+    monkeypatch.setattr("kisnet_ytm._source.requests.Session", lambda **_: session)
+
+    with CurlCffiSource() as source, pytest.raises(SourceTransportError):
+        source.list_kinds(REQUESTED_DATE)
+
+
+def test_transport_does_not_report_synthetic_http_zero(monkeypatch: pytest.MonkeyPatch) -> None:
+    class ResponseCurlError(CurlError):
+        def __init__(self) -> None:
+            super().__init__("fixture DNS failure", 6)
+            self.response = SimpleNamespace(status_code=0)
+
+    error = ResponseCurlError()
+    session = CallbackSession((), error=error)
+    monkeypatch.setattr("kisnet_ytm._source.requests.Session", lambda **_: session)
+
+    with (
+        CurlCffiSource() as source,
+        pytest.raises(SourceTransportError, match="failed before a response"),
+    ):
+        source.list_kinds(REQUESTED_DATE)
+
+
+def test_transport_keeps_http_failures_distinct(monkeypatch: pytest.MonkeyPatch) -> None:
+    session = CallbackSession((FIXTURES["init"].encode(),), status_code=503)
+    monkeypatch.setattr("kisnet_ytm._source.requests.Session", lambda **_: session)
+
+    with CurlCffiSource() as source, pytest.raises(SourceTransportError, match="HTTP 503"):
+        source.list_kinds(REQUESTED_DATE)
+
+
+def test_utf8_bom_and_replacement_character_are_valid() -> None:
+    response = FIXTURES["init"].replace("국채", "국\ufffd채").encode()
+
+    assert parse_kinds_response(b"\xef\xbb\xbf" + response)[0].name == "국\ufffd채"
+    assert (
+        parse_kinds_response(response.replace("국\ufffd채".encode(), b"&#xFFFD;"))[0].name
+        == "\ufffd"
+    )
+
+
+def test_duplicate_bom_is_rejected() -> None:
+    response = FIXTURES["init"].encode()
+
+    with pytest.raises(SourceFormatError, match="at most one"):
+        parse_kinds_response(b"\xef\xbb\xbf\xef\xbb\xbf" + response)
+
+
+def test_invalid_utf8_is_rejected() -> None:
+    with pytest.raises(SourceFormatError, match="UTF-8"):
+        parse_kinds_response(FIXTURES["init"].encode() + b"\xff")
+
+
+@pytest.mark.parametrize("version", ["1.1", "1.2"])
+def test_unsupported_xml_versions_are_rejected(version: str) -> None:
+    response = FIXTURES["init"].replace('version="1.0"', f'version="{version}"')
+
+    with pytest.raises(SourceFormatError, match=r"XML 1\.0"):
+        parse_kinds_response(response)
+
+
+@pytest.mark.parametrize("encoding", ["UTF8", "ISO-8859-1", "UTF-16", "UTF-32"])
+def test_unsupported_xml_encoding_declarations_are_rejected(encoding: str) -> None:
+    response = FIXTURES["init"].replace('encoding="UTF-8"', f'encoding="{encoding}"')
+
+    with pytest.raises(SourceFormatError, match="UTF-8"):
+        parse_kinds_response(response)
+
+
+@pytest.mark.parametrize("encoding", ["UTF-8", "utf-8"])
+def test_supported_xml_encoding_declarations_are_accepted(encoding: str) -> None:
+    response = FIXTURES["init"].replace('encoding="UTF-8"', f'encoding="{encoding}"')
+
+    assert parse_kinds_response(response)[0].code == "10"
 
 
 @pytest.mark.parametrize("encoding", ["unknown", "UTF-32"])
@@ -449,3 +621,24 @@ def test_date_resolution_rejects_impossible_attempt_history(
 
 def test_list_kinds_without_a_date_is_network_free() -> None:
     assert list_kinds()[0] == Kind(code="10", name="국채")
+
+
+def _xml_at_byte_length(xml: str, target_bytes: int) -> str:
+    prefix = f"{xml}<!--"
+    suffix = "-->"
+    padding_bytes = target_bytes - len(f"{prefix}{suffix}".encode())
+    if padding_bytes < 0:
+        raise ValueError(f"target XML byte length {target_bytes} is too small")
+    return f"{prefix}{'x' * padding_bytes}{suffix}"
+
+
+def _nested_xml_response(nested_elements: int) -> str:
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<Root xmlns="http://www.nexacroplatform.com/platform/dataset">'
+        '<Parameters><Parameter id="ErrorCode">0</Parameter></Parameters>'
+        + "<Extra>" * nested_elements
+        + "</Extra>" * nested_elements
+        + '<Dataset id="output1"><Rows><Row><Col id="divCode">10</Col>'
+        '<Col id="divName">국채</Col></Row></Rows></Dataset></Root>'
+    )

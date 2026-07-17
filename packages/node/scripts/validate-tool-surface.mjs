@@ -9,6 +9,7 @@ const contract = JSON.parse(await readFile(new URL("cases.json", contractDirecto
 const fixtures = Object.fromEntries(await Promise.all(
   Object.entries(contract.fixtures).map(async ([name, file]) => [name, await readFile(new URL(file, contractDirectory), "utf8")])
 ));
+const utf8Encoder = new TextEncoder();
 
 function check(condition, message) {
   if (!condition) failures.push(message);
@@ -29,6 +30,7 @@ check(existsSync("SPEC.md"), "npm package must preserve the published tool surfa
 check(existsSync("LICENSE.md"), "npm package must include LICENSE.md");
 check(existsSync("skills/kisnet-ytm/SKILL.md"), "npm package must preserve the installable kisnet-ytm agent skill");
 check(existsSync("dist/cli.js"), "dist/cli.js must exist; run bun run build");
+check(existsSync("dist/nexacro.js"), "dist/nexacro.js must exist; run bun run build");
 check(existsSync("dist/toolset.js"), "dist/toolset.js must exist; run bun run build");
 check(existsSync("dist/toolset.d.ts"), "dist/toolset.d.ts must exist; run bun run build");
 const cliSource = await readFile("dist/cli.js", "utf8");
@@ -84,6 +86,150 @@ const missingValueResult = await toolset.execute("matrix", { baseDate: contract.
 for (const tenor of contract.expectations.missingValues.nullTenors) {
   check(missingValueResult.rows[0]?.yields[tenor] === null, `shared missing value ${tenor} must normalize to null`);
   check(missingValueResult.rows[0]?.yieldText[tenor] === contract.expectations.missingValues.rawValues[tenor], `shared missing value ${tenor} must preserve raw text`);
+}
+
+for (const xmlCase of contract.xmlCases.valid) {
+  if (xmlCase.operation === "matrix") {
+    const result = await toolset.execute("matrix", { baseDate: contract.request.baseDate, kind: contract.request.kind.name }, { fetch: fixtureFetch(fixtures[xmlCase.fixture]) });
+    check(result.rows[0]?.raw[xmlCase.expectedRawColumn] === xmlCase.expectedRawValue, `${xmlCase.fixture} must preserve the expected raw column value`);
+    if (xmlCase.expectedExtraRawColumn) {
+      check(Object.hasOwn(result.rows[0]?.raw || {}, xmlCase.expectedExtraRawColumn), `${xmlCase.fixture} must preserve the expected extra raw column as an own property`);
+      check(result.rows[0]?.raw[xmlCase.expectedExtraRawColumn] === xmlCase.expectedExtraRawValue, `${xmlCase.fixture} must preserve the expected extra raw column value`);
+    }
+    continue;
+  }
+  const result = await toolset.execute("kinds", { baseDate: contract.request.baseDate }, { fetch: () => xmlResponse(fixtures[xmlCase.fixture]) });
+  check(result.kinds[0]?.code === xmlCase.expectedKindCode, `${xmlCase.fixture} must preserve the expected kind code`);
+  check(result.kinds[0]?.name === xmlCase.expectedKindName, `${xmlCase.fixture} must preserve the expected kind name`);
+}
+
+const bomResult = await toolset.execute("kinds", { baseDate: contract.request.baseDate }, { fetch: () => xmlResponse(`\uFEFF${fixtures.init}`) });
+check(bomResult.kinds[0]?.code === contract.request.kind.code, "a leading UTF-8 BOM must be accepted");
+
+try {
+  const doubleBom = concatBytes(new Uint8Array([0xEF, 0xBB, 0xBF, 0xEF, 0xBB, 0xBF]), utf8Encoder.encode(fixtures.init));
+  await toolset.execute("kinds", { baseDate: contract.request.baseDate }, { fetch: () => byteResponse(doubleBom) });
+  failures.push(`a duplicate UTF-8 BOM must throw ${contract.expectations.formatError}`);
+} catch (error) {
+  check(toolset.serializeError(error).code === contract.expectations.formatError, `a duplicate UTF-8 BOM must throw ${contract.expectations.formatError}`);
+}
+
+const replacementCharacterResult = await toolset.execute("kinds", { baseDate: contract.request.baseDate }, { fetch: () => xmlResponse(fixtures.init.replace("국채", "국\uFFFD채")) });
+check(replacementCharacterResult.kinds[0]?.name === "국\uFFFD채", "a literal XML 1.0 replacement character must remain valid");
+
+for (const unsupportedXmlVersion of ["1.1", "1.2"]) {
+  const response = fixtures.init.replace('version="1.0"', `version="${unsupportedXmlVersion}"`);
+  try {
+    await toolset.execute("kinds", { baseDate: contract.request.baseDate }, { fetch: () => xmlResponse(response) });
+    failures.push(`XML ${unsupportedXmlVersion} must throw ${contract.expectations.formatError}`);
+  } catch (error) {
+    check(toolset.serializeError(error).code === contract.expectations.formatError, `XML ${unsupportedXmlVersion} must throw ${contract.expectations.formatError}`);
+  }
+}
+
+for (const supportedEncoding of ["UTF-8", "utf-8"]) {
+  const response = fixtures.init.replace('encoding="UTF-8"', `encoding="${supportedEncoding}"`);
+  const result = await toolset.execute("kinds", { baseDate: contract.request.baseDate }, { fetch: () => xmlResponse(response) });
+  check(result.kinds[0]?.code === contract.request.kind.code, `XML encoding ${supportedEncoding} must remain supported`);
+}
+
+for (const unsupportedEncoding of ["UTF8", "ISO-8859-1", "UTF-16"]) {
+  const response = fixtures.init.replace('encoding="UTF-8"', `encoding="${unsupportedEncoding}"`);
+  try {
+    await toolset.execute("kinds", { baseDate: contract.request.baseDate }, { fetch: () => xmlResponse(response) });
+    failures.push(`XML encoding ${unsupportedEncoding} must throw ${contract.expectations.formatError}`);
+  } catch (error) {
+    check(toolset.serializeError(error).code === contract.expectations.formatError, `XML encoding ${unsupportedEncoding} must throw ${contract.expectations.formatError}`);
+  }
+}
+
+const exactLimitXml = xmlAtByteLength(fixtures.init, contract.xmlLimits.maxBodyBytes);
+const exactLimitResult = await toolset.execute("kinds", { baseDate: contract.request.baseDate }, { fetch: () => xmlResponse(exactLimitXml, { headers: { "content-length": String(contract.xmlLimits.maxBodyBytes) } }) });
+check(exactLimitResult.kinds[0]?.code === contract.request.kind.code, "a response at the exact XML byte limit must succeed");
+
+let oversizedStreamCancelled = false;
+const oversizedBytes = utf8Encoder.encode(xmlAtByteLength(fixtures.init, contract.xmlLimits.maxBodyBytes + 1));
+const oversizedStream = new ReadableStream({
+  start(controller) {
+    controller.enqueue(oversizedBytes);
+  },
+  cancel() {
+    oversizedStreamCancelled = true;
+  }
+});
+try {
+  await toolset.execute("kinds", { baseDate: contract.request.baseDate }, { fetch: () => Promise.resolve(new Response(oversizedStream, { status: 200, headers: { "content-length": "1" } })) });
+  failures.push(`an oversized measured body must throw ${contract.expectations.formatError}`);
+} catch (error) {
+  check(toolset.serializeError(error).code === contract.expectations.formatError, `an oversized measured body must throw ${contract.expectations.formatError}`);
+  check(oversizedStreamCancelled, "an oversized measured body must cancel its response stream");
+}
+
+const misleadingLengthResult = await toolset.execute("kinds", { baseDate: contract.request.baseDate }, { fetch: () => xmlResponse(fixtures.init, { headers: { "content-length": String(contract.xmlLimits.maxBodyBytes + 1), "content-encoding": "gzip" } }) });
+check(misleadingLengthResult.kinds[0]?.code === contract.request.kind.code, "the measured decompressed body, not encoded Content-Length, must determine the limit");
+
+let nonstreamingArrayBufferCalled = false;
+try {
+  await toolset.execute("kinds", { baseDate: contract.request.baseDate }, {
+    fetch: () => Promise.resolve({
+      ok: true,
+      status: 200,
+      body: null,
+      arrayBuffer() {
+        nonstreamingArrayBufferCalled = true;
+        return Promise.resolve(utf8Encoder.encode(fixtures.init).buffer);
+      }
+    })
+  });
+  failures.push(`a non-streaming response must throw ${contract.expectations.formatError}`);
+} catch (error) {
+  check(toolset.serializeError(error).code === contract.expectations.formatError, `a non-streaming response must throw ${contract.expectations.formatError}`);
+  check(!nonstreamingArrayBufferCalled, "a non-streaming response must not be buffered before rejection");
+}
+
+try {
+  const invalidUtf8 = concatBytes(utf8Encoder.encode(fixtures.init), new Uint8Array([0xFF]));
+  await toolset.execute("kinds", { baseDate: contract.request.baseDate }, { fetch: () => byteResponse(invalidUtf8) });
+  failures.push(`invalid UTF-8 response bytes must throw ${contract.expectations.formatError}`);
+} catch (error) {
+  check(toolset.serializeError(error).code === contract.expectations.formatError, `invalid UTF-8 response bytes must throw ${contract.expectations.formatError}`);
+}
+
+for (const fixtureName of contract.xmlCases.invalid) {
+  try {
+    await toolset.execute("kinds", { baseDate: contract.request.baseDate }, { fetch: () => xmlResponse(fixtures[fixtureName]) });
+    failures.push(`${fixtureName} fixture must throw ${contract.expectations.formatError}`);
+  } catch (error) {
+    check(toolset.serializeError(error).code === contract.expectations.formatError, `${fixtureName} fixture must throw ${contract.expectations.formatError}`);
+  }
+}
+
+const excessiveDepthResponse = `<?xml version="1.0" encoding="UTF-8"?><Root xmlns="http://www.nexacroplatform.com/platform/dataset"><Parameters><Parameter id="ErrorCode">0</Parameter></Parameters>${"<Extra>".repeat(contract.xmlLimits.maxElementDepth)}${"</Extra>".repeat(contract.xmlLimits.maxElementDepth)}<Dataset id="output1"><Rows><Row><Col id="divCode">10</Col><Col id="divName">국채</Col></Row></Rows></Dataset></Root>`;
+try {
+  await toolset.execute("kinds", { baseDate: contract.request.baseDate }, { fetch: () => xmlResponse(excessiveDepthResponse) });
+  failures.push(`XML element depth above ${contract.xmlLimits.maxElementDepth} must throw ${contract.expectations.formatError}`);
+} catch (error) {
+  check(toolset.serializeError(error).code === contract.expectations.formatError, `excessive XML depth must throw ${contract.expectations.formatError}`);
+}
+const maximumDepthResponse = excessiveDepthResponse.replace("<Extra>", "").replace("</Extra>", "");
+const maximumDepthResult = await toolset.execute("kinds", { baseDate: contract.request.baseDate }, { fetch: () => xmlResponse(maximumDepthResponse) });
+check(maximumDepthResult.kinds[0]?.code === "10", `XML element depth ${contract.xmlLimits.maxElementDepth} must not be rejected solely for depth`);
+
+for (const invalidCharacter of ["\u0001", "&#0;", "&#xD800;", "&#xFFFE;", "&#x110000;"]) {
+  const response = `<?xml version="1.0" encoding="UTF-8"?><Root xmlns="http://www.nexacroplatform.com/platform/dataset"><Parameters><Parameter id="ErrorCode">0</Parameter></Parameters><Dataset id="output1"><Rows><Row><Col id="divCode">10</Col><Col id="divName">${invalidCharacter}</Col></Row></Rows></Dataset></Root>`;
+  try {
+    await toolset.execute("kinds", { baseDate: contract.request.baseDate }, { fetch: () => xmlResponse(response) });
+    failures.push(`XML 1.0 character ${JSON.stringify(invalidCharacter)} must throw ${contract.expectations.formatError}`);
+  } catch (error) {
+    check(toolset.serializeError(error).code === contract.expectations.formatError, `invalid XML 1.0 character must throw ${contract.expectations.formatError}`);
+  }
+}
+const invalidAttributeCharacterResponse = `<?xml version="1.0" encoding="UTF-8"?><Root xmlns="http://www.nexacroplatform.com/platform/dataset"><Parameters><Parameter id="ErrorCode">0</Parameter></Parameters><Dataset id="output1"><Rows><Row><Col id="divCode">10</Col><Col id="&#0;">ignored</Col><Col id="divName">국채</Col></Row></Rows></Dataset></Root>`;
+try {
+  await toolset.execute("kinds", { baseDate: contract.request.baseDate }, { fetch: () => xmlResponse(invalidAttributeCharacterResponse) });
+  failures.push(`an invalid XML 1.0 attribute character must throw ${contract.expectations.formatError}`);
+} catch (error) {
+  check(toolset.serializeError(error).code === contract.expectations.formatError, `an invalid XML 1.0 attribute character must throw ${contract.expectations.formatError}`);
 }
 
 for (const [fixtureName, expectedCode] of [
@@ -148,6 +294,21 @@ try {
   failures.push("transport failure must throw source_transport_error");
 } catch (error) {
   check(toolset.serializeError(error).code === contract.expectations.transportError, "transport failure must remain distinct from unavailable, protocol, and malformed source data");
+}
+
+try {
+  const failedStream = new ReadableStream({ pull() { throw new TypeError("fixture stream failure"); } });
+  await toolset.execute("kinds", { baseDate: contract.request.baseDate }, { fetch: () => Promise.resolve(new Response(failedStream, { status: 200 })) });
+  failures.push("response stream failure must throw source_transport_error");
+} catch (error) {
+  check(toolset.serializeError(error).code === contract.expectations.transportError, "response stream failure must throw source_transport_error");
+}
+
+try {
+  await toolset.execute("kinds", { baseDate: contract.request.baseDate }, { fetch: () => xmlResponse(fixtures.init, { status: 503 }) });
+  failures.push("HTTP failure must throw source_transport_error");
+} catch (error) {
+  check(toolset.serializeError(error).code === contract.expectations.transportError, "HTTP failure must throw source_transport_error");
 }
 
 const fallbackResult = await toolset.execute("matrix", { baseDate: "2026-06-07", kind: "국채", fallback: "previous-available", lookbackDays: 2 }, { fetch: fakeFallbackFetch });
@@ -229,12 +390,30 @@ function fixtureFetch(matrixFixture, capturedRequests = []) {
   };
 }
 
-function xmlResponse(xml) {
-  return Promise.resolve({
-    ok: true,
-    status: 200,
-    text: () => Promise.resolve(xml)
-  });
+function xmlResponse(xml, init = {}) {
+  return byteResponse(utf8Encoder.encode(xml), init);
+}
+
+function byteResponse(bytes, init = {}) {
+  return Promise.resolve(new Response(bytes, { status: init.status ?? 200, headers: init.headers }));
+}
+
+function concatBytes(...arrays) {
+  const result = new Uint8Array(arrays.reduce((total, array) => total + array.byteLength, 0));
+  let offset = 0;
+  for (const array of arrays) {
+    result.set(array, offset);
+    offset += array.byteLength;
+  }
+  return result;
+}
+
+function xmlAtByteLength(xml, targetBytes) {
+  const prefix = `${xml}<!--`;
+  const suffix = "-->";
+  const paddingBytes = targetBytes - utf8Encoder.encode(prefix + suffix).byteLength;
+  if (paddingBytes < 0) throw new Error(`target XML byte length ${targetBytes} is too small`);
+  return `${prefix}${"x".repeat(paddingBytes)}${suffix}`;
 }
 
 if (process.env.KISNET_SMOKE_NETWORK === "1") {

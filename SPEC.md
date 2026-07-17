@@ -50,6 +50,31 @@ Matrix lookup uses:
 - KIS-NET 종류 and tenor strings remain source-compatible rather than closed
   public enums.
 
+### Nexacro response XML
+
+- Responses are well-formed XML 1.0 encoded as UTF-8, with an optional UTF-8 BOM, in the
+  `http://www.nexacroplatform.com/platform/dataset` namespace. The namespace
+  may use a default declaration or any prefix, but the root and recognized
+  Nexacro protocol elements must resolve to that exact URI.
+- `DOCTYPE`, custom entities, external resources, unsupported encodings,
+  element depth above 64 (with the root at depth 1), and bodies larger than
+  1 MiB (1,048,576 bytes of decompressed response payload, measured before
+  text decoding) are source-format errors.
+  XML built-in and numeric character references remain valid.
+- The direct `Parameters` container must provide exactly one `ErrorCode`.
+  `ErrorMsg` and `ErrorMessage` may each appear at most once. Nonzero protocol
+  status is reported before a missing result dataset and preserves the existing
+  `ErrorMsg`-then-`ErrorMessage` fallback order.
+- A successful response has exactly one direct dataset with the requested `id`
+  and exactly one direct `Rows` container. Rows and columns are read only from
+  direct `Row` and `Col` children.
+- Every `Col` has a nonempty `id` that is unique within its row. Text and CDATA
+  content are combined, self-closing columns are empty strings, and nested
+  element content is rejected.
+- Duplicate protocol parameters, matching datasets, or row columns are
+  source-format errors. Additional attributes, unknown parameters, unrelated
+  datasets, and unknown columns remain valid for source compatibility.
+
 The versioned fixtures and expected cases under `contracts/kisnet` are the
 executable source contract for both implementations.
 

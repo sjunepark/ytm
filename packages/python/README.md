@@ -88,6 +88,23 @@ bun run test:python
 bun run build:python
 ```
 
+The regular suite does not use the network. To exercise the public API against
+the live KIS-NET service, run:
+
+```sh
+bun run test:python:live
+```
+
+Live tests default to today's date, `국채`, and a 10-calendar-day fallback. Run
+pytest directly with `--live-base-date`, `--live-kind`, or `--live-lookback` to
+override those values. The live suite also samples three generated combinations
+across recent dates and known kinds; it disables Hypothesis deadlines and
+shrinking to keep external traffic bounded.
+
+Offline contract tests use Hypothesis for generated parser, numeric-validation,
+and fallback-resolution coverage. They remain fixture-backed and make no network
+requests.
+
 The supported Python 3.11-3.14 matrix and clean-wheel import run in CI.
 The source distribution also contains the tests and shared contract fixtures.
 After extracting it, downstream packagers can run the same locked suite with:

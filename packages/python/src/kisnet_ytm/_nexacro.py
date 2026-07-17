@@ -13,7 +13,19 @@ from .models import Kind
 SOURCE_BASE_URL = "https://kis-net.kr"
 INIT_ENDPOINT = "/rateInfo/ytmMatrixMobileInitList.do"
 MATRIX_ENDPOINT = "/rateInfo/ytmMatrixMobileList.do"
+NEXACRO_NAMESPACE = "http://www.nexacroplatform.com/platform/dataset"
+MAX_RESPONSE_BODY_BYTES = 1_048_576
+MAX_ELEMENT_DEPTH = 64
 ERROR_CODE_PATTERN = re.compile(r"[+-]?[0-9]+")
+ZERO_ERROR_CODE_PATTERN = re.compile(r"[+-]?0+")
+XML_DECLARATION_START = re.compile(r"\A<\?xml(?:[ \t\r\n]|\?>)")
+XML_DECLARATION_PATTERN = re.compile(
+    r'^[ \t\r\n]+version[ \t\r\n]*=[ \t\r\n]*(["\'])([^"\']+)\1'
+    r'(?:[ \t\r\n]+encoding[ \t\r\n]*=[ \t\r\n]*(["\'])([^"\']+)\3)?'
+    r'(?:[ \t\r\n]+standalone[ \t\r\n]*=[ \t\r\n]*(["\'])(yes|no)\5)?'
+    r"[ \t\r\n]*$"
+)
+PROTOCOL_ELEMENTS = frozenset({"Root", "Parameters", "Parameter", "Dataset", "Rows", "Row", "Col"})
 
 TENORS: tuple[tuple[str, str], ...] = (
     ("m3", "3M"),
@@ -95,18 +107,45 @@ def parse_matrix_response(xml: str | bytes) -> tuple[dict[str, str], ...]:
 
 
 def _parse_dataset(xml: str | bytes, dataset_id: str) -> tuple[dict[str, str], ...]:
+    source = _normalize_xml(xml)
+    _validate_xml_declaration(source)
     try:
-        root = ElementTree.fromstring(xml)
+        parser = ElementTree.XMLParser(target=_StrictTreeBuilder())
+        root = ElementTree.fromstring(source, parser=parser)
+    except SourceFormatError:
+        raise
     except (ElementTree.ParseError, LookupError, ValueError) as error:
         raise SourceFormatError("KIS-NET returned malformed Nexacro XML") from error
 
-    error_code = _find_parameter(root, "ErrorCode")
-    if error_code is None:
-        raise SourceFormatError("KIS-NET response is missing the required ErrorCode parameter")
+    if root.tag != _protocol_tag("Root"):
+        raise SourceFormatError("KIS-NET response root must be a Nexacro Root element")
+    _validate_protocol_tree(root)
+
+    parameter_containers = _direct_children(root, "Parameters")
+    if len(parameter_containers) != 1:
+        raise SourceFormatError(
+            "KIS-NET response must contain exactly one direct Parameters element"
+        )
+    parameters = _direct_children(parameter_containers[0], "Parameter")
+    error_codes = _parameters_by_id(parameters, "ErrorCode")
+    error_messages = _parameters_by_id(parameters, "ErrorMsg")
+    legacy_error_messages = _parameters_by_id(parameters, "ErrorMessage")
+    if len(error_codes) != 1:
+        raise SourceFormatError("KIS-NET response must contain exactly one ErrorCode parameter")
+    if len(error_messages) > 1 or len(legacy_error_messages) > 1:
+        raise SourceFormatError("KIS-NET response contains duplicate error-message parameters")
+
+    primary_message = _scalar_text(error_messages[0], "ErrorMsg").strip() if error_messages else ""
+    legacy_message = (
+        _scalar_text(legacy_error_messages[0], "ErrorMessage").strip()
+        if legacy_error_messages
+        else ""
+    )
+    error_code = _scalar_text(error_codes[0], "ErrorCode").strip()
     if ERROR_CODE_PATTERN.fullmatch(error_code) is None:
         raise SourceFormatError("KIS-NET response contains an invalid ErrorCode parameter")
-    if error_code.lstrip("+-").strip("0"):
-        error_message = _find_parameter(root, "ErrorMsg") or _find_parameter(root, "ErrorMessage")
+    if ZERO_ERROR_CODE_PATTERN.fullmatch(error_code) is None:
+        error_message = primary_message or legacy_message or None
         message_suffix = f" ({error_message})" if error_message else ""
         raise SourceProtocolError(
             f"KIS-NET returned nonzero Nexacro ErrorCode {error_code}{message_suffix}",
@@ -114,38 +153,130 @@ def _parse_dataset(xml: str | bytes, dataset_id: str) -> tuple[dict[str, str], .
             error_message=error_message,
         )
 
-    dataset = next(
-        (
-            element
-            for element in root.iter()
-            if _local_name(element.tag) == "Dataset" and element.get("id") == dataset_id
-        ),
-        None,
+    datasets = tuple(
+        element for element in _direct_children(root, "Dataset") if element.get("id") == dataset_id
     )
-    if dataset is None:
-        raise SourceFormatError(f"KIS-NET response is missing required dataset {dataset_id}")
+    if len(datasets) != 1:
+        raise SourceFormatError(
+            f"KIS-NET response must contain exactly one direct dataset {dataset_id}"
+        )
+    rows_containers = _direct_children(datasets[0], "Rows")
+    if len(rows_containers) != 1:
+        raise SourceFormatError(
+            f"KIS-NET dataset {dataset_id} must contain exactly one direct Rows element"
+        )
 
-    rows: list[dict[str, str]] = []
-    for row_element in dataset.iter():
-        if _local_name(row_element.tag) != "Row":
-            continue
-        row: dict[str, str] = {}
-        for column in row_element:
-            if _local_name(column.tag) == "Col" and column.get("id"):
-                row[column.get("id", "")] = column.text or ""
-        rows.append(row)
-    return tuple(rows)
+    return tuple(_parse_row(row) for row in _direct_children(rows_containers[0], "Row"))
 
 
-def _find_parameter(root: ElementTree.Element, parameter_id: str) -> str | None:
-    return next(
-        (
-            (element.text or "").strip()
-            for element in root.iter()
-            if _local_name(element.tag) == "Parameter" and element.get("id") == parameter_id
-        ),
-        None,
-    )
+class _StrictTreeBuilder(ElementTree.TreeBuilder):
+    def __init__(self) -> None:
+        super().__init__()
+        self._depth = 0
+
+    def start(self, tag: str, attrs: dict[str, str]) -> ElementTree.Element:
+        self._depth += 1
+        if self._depth > MAX_ELEMENT_DEPTH:
+            raise SourceFormatError(
+                f"KIS-NET response exceeds the maximum XML element depth of {MAX_ELEMENT_DEPTH}"
+            )
+        return super().start(tag, attrs)
+
+    def end(self, tag: str) -> ElementTree.Element:
+        element = super().end(tag)
+        self._depth -= 1
+        return element
+
+    def doctype(self, name: str, public_id: str | None, system_id: str | None) -> None:
+        raise SourceFormatError("KIS-NET response must not contain a DOCTYPE declaration")
+
+
+def _normalize_xml(xml: str | bytes) -> str:
+    if isinstance(xml, bytes):
+        if len(xml) > MAX_RESPONSE_BODY_BYTES:
+            raise SourceFormatError(
+                f"KIS-NET response exceeds the maximum body size of {MAX_RESPONSE_BODY_BYTES} bytes"
+            )
+        try:
+            source = xml.decode("utf-8")
+        except UnicodeDecodeError as error:
+            raise SourceFormatError("KIS-NET response is not valid UTF-8") from error
+    else:
+        try:
+            body_size = len(xml.encode("utf-8"))
+        except UnicodeEncodeError as error:
+            raise SourceFormatError("KIS-NET response is not valid UTF-8") from error
+        if body_size > MAX_RESPONSE_BODY_BYTES:
+            raise SourceFormatError(
+                f"KIS-NET response exceeds the maximum body size of {MAX_RESPONSE_BODY_BYTES} bytes"
+            )
+        source = xml
+
+    if source.startswith("\ufeff"):
+        source = source[1:]
+        if source.startswith("\ufeff"):
+            raise SourceFormatError("KIS-NET response must contain at most one UTF-8 BOM")
+    return source
+
+
+def _validate_xml_declaration(source: str) -> None:
+    if XML_DECLARATION_START.match(source) is None:
+        return
+    declaration_end = source.find("?>")
+    if declaration_end < 0:
+        raise SourceFormatError("KIS-NET response contains a malformed XML declaration")
+    declaration = XML_DECLARATION_PATTERN.fullmatch(source[5:declaration_end])
+    if declaration is None:
+        raise SourceFormatError("KIS-NET response contains a malformed XML declaration")
+    if declaration.group(2) != "1.0":
+        raise SourceFormatError("KIS-NET response must use XML 1.0")
+    encoding = declaration.group(4)
+    if encoding is not None and encoding.lower() != "utf-8":
+        raise SourceFormatError("KIS-NET response must use UTF-8 encoding")
+
+
+def _parse_row(row_element: ElementTree.Element) -> dict[str, str]:
+    row: dict[str, str] = {}
+    for column in _direct_children(row_element, "Col"):
+        column_id = column.get("id")
+        if column_id is None or not column_id.strip():
+            raise SourceFormatError("KIS-NET response contains a Col without a nonempty id")
+        if column_id in row:
+            raise SourceFormatError(f"KIS-NET response row contains duplicate column {column_id}")
+        row[column_id] = _scalar_text(column, f"Col {column_id}")
+    return row
+
+
+def _validate_protocol_tree(root: ElementTree.Element) -> None:
+    for element in root.iter():
+        local_name = _local_name(element.tag)
+        if local_name in PROTOCOL_ELEMENTS and element.tag != _protocol_tag(local_name):
+            raise SourceFormatError(
+                f"KIS-NET protocol element {local_name} has an invalid namespace"
+            )
+
+
+def _direct_children(
+    parent: ElementTree.Element, local_name: str
+) -> tuple[ElementTree.Element, ...]:
+    tag = _protocol_tag(local_name)
+    return tuple(child for child in parent if child.tag == tag)
+
+
+def _parameters_by_id(
+    parameters: tuple[ElementTree.Element, ...], parameter_id: str
+) -> tuple[ElementTree.Element, ...]:
+    return tuple(element for element in parameters if element.get("id") == parameter_id)
+
+
+def _scalar_text(element: ElementTree.Element, label: str) -> str:
+    if len(element):
+        raise SourceFormatError(f"KIS-NET response {label} contains nested element content")
+    return element.text or ""
+
+
+def _protocol_tag(local_name: str) -> str:
+    return f"{{{NEXACRO_NAMESPACE}}}{local_name}"
 
 
 def _local_name(tag: str) -> str:
