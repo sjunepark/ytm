@@ -16,6 +16,8 @@ const PROTOCOL_ELEMENTS = new Set([
 ]);
 const ERROR_CODE_TEXT = /^[+-]?[0-9]+$/;
 const ZERO_ERROR_CODE_TEXT = /^[+-]?0+$/;
+const XML_DECLARATION_START = /^<\?xml(?:[ \t\r\n]|\?>)/;
+const XML_DECLARATION = /^[ \t\r\n]+version[ \t\r\n]*=[ \t\r\n]*(["'])([^"']+)\1(?:[ \t\r\n]+encoding[ \t\r\n]*=[ \t\r\n]*(["'])([^"']+)\3)?(?:[ \t\r\n]+standalone[ \t\r\n]*=[ \t\r\n]*(["'])(yes|no)\5)?[ \t\r\n]*$/;
 
 export class NexacroResponseError extends Error {
   constructor(message, { errorCode, errorMessage } = {}) {
@@ -34,6 +36,7 @@ export function parseNexacroDataset(xml, datasetId) {
   let source = String(xml);
   validateXmlCharacters(source);
   if (source.startsWith("\uFEFF")) source = source.slice(1);
+  validateXmlDeclaration(source);
 
   let document;
   try {
@@ -41,8 +44,6 @@ export function parseNexacroDataset(xml, datasetId) {
   } catch (error) {
     throw formatError("KIS-NET returned malformed Nexacro XML", error);
   }
-  validateXmlDeclaration(document);
-
   if (document.doctype) {
     throw formatError("KIS-NET response must not contain a DOCTYPE declaration");
   }
@@ -68,13 +69,13 @@ export function parseNexacroDataset(xml, datasetId) {
     throw formatError("KIS-NET response contains duplicate error-message parameters");
   }
 
+  const primaryMessage = errorMessages.length ? scalarText(errorMessages[0], "ErrorMsg").trim() : "";
+  const legacyMessage = legacyErrorMessages.length ? scalarText(legacyErrorMessages[0], "ErrorMessage").trim() : "";
   const errorCode = scalarText(errorCodes[0], "ErrorCode").trim();
   if (!ERROR_CODE_TEXT.test(errorCode)) {
     throw formatError("KIS-NET response contains an invalid ErrorCode parameter");
   }
   if (!ZERO_ERROR_CODE_TEXT.test(errorCode)) {
-    const primaryMessage = errorMessages.length ? scalarText(errorMessages[0], "ErrorMsg").trim() : "";
-    const legacyMessage = legacyErrorMessages.length ? scalarText(legacyErrorMessages[0], "ErrorMessage").trim() : "";
     const errorMessage = primaryMessage || legacyMessage || undefined;
     throw new NexacroResponseError(
       `KIS-NET returned nonzero Nexacro ErrorCode ${errorCode}${errorMessage ? ` (${errorMessage})` : ""}`,
@@ -99,14 +100,20 @@ function stopOnXmlDiagnostic(level, message) {
   onWarningStopParsing();
 }
 
-function validateXmlDeclaration(document) {
-  const declaration = document.firstChild;
-  if (declaration?.nodeType !== 7 || declaration.target !== "xml") return;
-  const version = /^version\s*=\s*(["'])([^"']+)\1(?:\s|$)/.exec(declaration.data)?.[2];
-  if (version !== "1.0") {
+function validateXmlDeclaration(source) {
+  if (!XML_DECLARATION_START.test(source)) return;
+  const declarationEnd = source.indexOf("?>");
+  if (declarationEnd < 0) {
+    throw formatError("KIS-NET response contains a malformed XML declaration");
+  }
+  const declaration = XML_DECLARATION.exec(source.slice(5, declarationEnd));
+  if (!declaration) {
+    throw formatError("KIS-NET response contains a malformed XML declaration");
+  }
+  if (declaration[2] !== "1.0") {
     throw formatError("KIS-NET response must use XML 1.0");
   }
-  const encoding = /(?:^|\s)encoding\s*=\s*(["'])([^"']+)\1(?:\s|$)/.exec(declaration.data)?.[2];
+  const encoding = declaration[4];
   if (encoding !== undefined && encoding.toLowerCase() !== "utf-8") {
     throw formatError("KIS-NET response must use UTF-8 encoding");
   }

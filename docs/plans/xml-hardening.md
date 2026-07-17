@@ -120,7 +120,12 @@ executable contract.
   removed Node's encoded `Content-Length` shortcut so the documented measured,
   decompressed-byte boundary is authoritative. Re-review found no remaining
   actionable issues.
-- Validation: the full test and validation gates passed (84 Python tests passed,
+- PR follow-up review tightened full XML-declaration grammar in both runtimes,
+  made Node reject unbounded non-streaming response implementations, derived
+  depth coverage from the shared contract, and validated message scalars even
+  on zero status. The locked curl-cffi `RequestException` hierarchy was also
+  covered directly to confirm write-abort errors reach the existing handler.
+- Validation: the full test and validation gates passed (90 Python tests passed,
   3 opt-in live tests skipped), as did the Node dry-run package and rebuilt
   Python sdist/wheel checks.
 - Live verification was attempted without retaining a response body, but the

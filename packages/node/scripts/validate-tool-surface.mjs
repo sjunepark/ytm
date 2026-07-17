@@ -168,6 +168,25 @@ try {
 const misleadingLengthResult = await toolset.execute("kinds", { baseDate: contract.request.baseDate }, { fetch: () => xmlResponse(fixtures.init, { headers: { "content-length": String(contract.xmlLimits.maxBodyBytes + 1), "content-encoding": "gzip" } }) });
 check(misleadingLengthResult.kinds[0]?.code === contract.request.kind.code, "the measured decompressed body, not encoded Content-Length, must determine the limit");
 
+let nonstreamingArrayBufferCalled = false;
+try {
+  await toolset.execute("kinds", { baseDate: contract.request.baseDate }, {
+    fetch: () => Promise.resolve({
+      ok: true,
+      status: 200,
+      body: null,
+      arrayBuffer() {
+        nonstreamingArrayBufferCalled = true;
+        return Promise.resolve(utf8Encoder.encode(fixtures.init).buffer);
+      }
+    })
+  });
+  failures.push(`a non-streaming response must throw ${contract.expectations.formatError}`);
+} catch (error) {
+  check(toolset.serializeError(error).code === contract.expectations.formatError, `a non-streaming response must throw ${contract.expectations.formatError}`);
+  check(!nonstreamingArrayBufferCalled, "a non-streaming response must not be buffered before rejection");
+}
+
 try {
   const invalidUtf8 = concatBytes(utf8Encoder.encode(fixtures.init), new Uint8Array([0xFF]));
   await toolset.execute("kinds", { baseDate: contract.request.baseDate }, { fetch: () => byteResponse(invalidUtf8) });
@@ -185,7 +204,7 @@ for (const fixtureName of contract.xmlCases.invalid) {
   }
 }
 
-const excessiveDepthResponse = `<?xml version="1.0" encoding="UTF-8"?><Root xmlns="http://www.nexacroplatform.com/platform/dataset"><Parameters><Parameter id="ErrorCode">0</Parameter></Parameters>${"<Extra>".repeat(64)}${"</Extra>".repeat(64)}<Dataset id="output1"><Rows><Row><Col id="divCode">10</Col><Col id="divName">국채</Col></Row></Rows></Dataset></Root>`;
+const excessiveDepthResponse = `<?xml version="1.0" encoding="UTF-8"?><Root xmlns="http://www.nexacroplatform.com/platform/dataset"><Parameters><Parameter id="ErrorCode">0</Parameter></Parameters>${"<Extra>".repeat(contract.xmlLimits.maxElementDepth)}${"</Extra>".repeat(contract.xmlLimits.maxElementDepth)}<Dataset id="output1"><Rows><Row><Col id="divCode">10</Col><Col id="divName">국채</Col></Row></Rows></Dataset></Root>`;
 try {
   await toolset.execute("kinds", { baseDate: contract.request.baseDate }, { fetch: () => xmlResponse(excessiveDepthResponse) });
   failures.push(`XML element depth above ${contract.xmlLimits.maxElementDepth} must throw ${contract.expectations.formatError}`);

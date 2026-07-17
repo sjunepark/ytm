@@ -12,6 +12,8 @@ from typing import cast
 
 import pytest
 from curl_cffi import CurlError
+from curl_cffi.const import CurlECode
+from curl_cffi.requests import RequestsError
 from pydantic import ValidationError
 
 from kisnet_ytm import (
@@ -56,12 +58,9 @@ FIXTURES = {
 REQUESTED_DATE = date.fromisoformat(CONTRACT["request"]["baseDate"])
 
 
-class FixtureResponseCurlError(CurlError):
-    response: SimpleNamespace
-
-    def __init__(self, message: str, code: int, status_code: int) -> None:
-        super().__init__(message, code)
-        self.response = SimpleNamespace(status_code=status_code)
+class FixtureResponseRequestError(RequestsError):
+    def __init__(self, message: str, code: CurlECode, status_code: int) -> None:
+        super().__init__(message, code, response=SimpleNamespace(status_code=status_code))
 
 
 class CallbackSession:
@@ -89,8 +88,8 @@ class CallbackSession:
             wrote = content_callback(chunk)
             self.callback_results.append(wrote)
             if wrote != len(chunk):
-                raise FixtureResponseCurlError(
-                    "fixture callback aborted the transfer", 23, self.status_code
+                raise FixtureResponseRequestError(
+                    "fixture callback aborted the transfer", CurlECode.WRITE_ERROR, self.status_code
                 )
         return SimpleNamespace(status_code=self.status_code)
 

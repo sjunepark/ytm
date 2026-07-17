@@ -18,9 +18,13 @@ MAX_RESPONSE_BODY_BYTES = 1_048_576
 MAX_ELEMENT_DEPTH = 64
 ERROR_CODE_PATTERN = re.compile(r"[+-]?[0-9]+")
 ZERO_ERROR_CODE_PATTERN = re.compile(r"[+-]?0+")
-XML_VERSION_ATTRIBUTE = re.compile(r'^version\s*=\s*(["\'])([^"\']+)\1(?:\s|$)')
-XML_ENCODING_ATTRIBUTE = re.compile(r'(?:^|\s)encoding\s*=\s*(["\'])([^"\']+)\1(?:\s|$)')
-XML_DECLARATION_START = re.compile(r"\A<\?xml(?:\s|\?>)")
+XML_DECLARATION_START = re.compile(r"\A<\?xml(?:[ \t\r\n]|\?>)")
+XML_DECLARATION_PATTERN = re.compile(
+    r'^[ \t\r\n]+version[ \t\r\n]*=[ \t\r\n]*(["\'])([^"\']+)\1'
+    r'(?:[ \t\r\n]+encoding[ \t\r\n]*=[ \t\r\n]*(["\'])([^"\']+)\3)?'
+    r'(?:[ \t\r\n]+standalone[ \t\r\n]*=[ \t\r\n]*(["\'])(yes|no)\5)?'
+    r"[ \t\r\n]*$"
+)
 PROTOCOL_ELEMENTS = frozenset({"Root", "Parameters", "Parameter", "Dataset", "Rows", "Row", "Col"})
 
 TENORS: tuple[tuple[str, str], ...] = (
@@ -131,18 +135,16 @@ def _parse_dataset(xml: str | bytes, dataset_id: str) -> tuple[dict[str, str], .
     if len(error_messages) > 1 or len(legacy_error_messages) > 1:
         raise SourceFormatError("KIS-NET response contains duplicate error-message parameters")
 
+    primary_message = _scalar_text(error_messages[0], "ErrorMsg").strip() if error_messages else ""
+    legacy_message = (
+        _scalar_text(legacy_error_messages[0], "ErrorMessage").strip()
+        if legacy_error_messages
+        else ""
+    )
     error_code = _scalar_text(error_codes[0], "ErrorCode").strip()
     if ERROR_CODE_PATTERN.fullmatch(error_code) is None:
         raise SourceFormatError("KIS-NET response contains an invalid ErrorCode parameter")
     if ZERO_ERROR_CODE_PATTERN.fullmatch(error_code) is None:
-        primary_message = (
-            _scalar_text(error_messages[0], "ErrorMsg").strip() if error_messages else ""
-        )
-        legacy_message = (
-            _scalar_text(legacy_error_messages[0], "ErrorMessage").strip()
-            if legacy_error_messages
-            else ""
-        )
         error_message = primary_message or legacy_message or None
         message_suffix = f" ({error_message})" if error_message else ""
         raise SourceProtocolError(
@@ -222,13 +224,14 @@ def _validate_xml_declaration(source: str) -> None:
         return
     declaration_end = source.find("?>")
     if declaration_end < 0:
-        return
-    declaration = source[5:declaration_end].strip()
-    version = XML_VERSION_ATTRIBUTE.match(declaration)
-    if version is None or version.group(2) != "1.0":
+        raise SourceFormatError("KIS-NET response contains a malformed XML declaration")
+    declaration = XML_DECLARATION_PATTERN.fullmatch(source[5:declaration_end])
+    if declaration is None:
+        raise SourceFormatError("KIS-NET response contains a malformed XML declaration")
+    if declaration.group(2) != "1.0":
         raise SourceFormatError("KIS-NET response must use XML 1.0")
-    encoding = XML_ENCODING_ATTRIBUTE.search(declaration)
-    if encoding is not None and encoding.group(2).lower() != "utf-8":
+    encoding = declaration.group(4)
+    if encoding is not None and encoding.lower() != "utf-8":
         raise SourceFormatError("KIS-NET response must use UTF-8 encoding")
 
 

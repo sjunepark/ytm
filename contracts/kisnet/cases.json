@@ -51,6 +51,7 @@
     "xmlCdata": "xml-valid-cdata.xml",
     "xmlAstralEntity": "xml-valid-astral-entity.xml",
     "xmlNonrecursiveEntity": "xml-valid-nonrecursive-entity.xml",
+    "xmlStandaloneDeclaration": "xml-valid-standalone-declaration.xml",
     "xmlMalformedNesting": "xml-invalid-malformed-nesting.xml",
     "xmlMissingNamespace": "xml-invalid-missing-namespace.xml",
     "xmlWrongNamespace": "xml-invalid-wrong-namespace.xml",
@@ -58,6 +59,11 @@
     "xmlNestedColumn": "xml-invalid-nested-column.xml",
     "xmlDuplicateErrorCode": "xml-invalid-duplicate-error-code.xml",
     "xmlDuplicateErrorMessage": "xml-invalid-duplicate-error-message.xml",
+    "xmlNestedErrorMessage": "xml-invalid-nested-error-message.xml",
+    "xmlDeclarationDuplicateEncoding": "xml-invalid-declaration-duplicate-encoding.xml",
+    "xmlDeclarationUnknownAttribute": "xml-invalid-declaration-unknown-attribute.xml",
+    "xmlDeclarationWrongOrder": "xml-invalid-declaration-wrong-order.xml",
+    "xmlDeclarationNonXmlWhitespace": "xml-invalid-declaration-non-xml-whitespace.xml",
     "xmlDuplicateDataset": "xml-invalid-duplicate-dataset.xml",
     "xmlDuplicateColumn": "xml-invalid-duplicate-column.xml"
   },
@@ -69,7 +75,8 @@
       { "fixture": "xmlSelfClosingCell", "operation": "matrix", "expectedRawColumn": "y2", "expectedRawValue": "", "expectedExtraRawColumn": "__proto__", "expectedExtraRawValue": "source-compatible" },
       { "fixture": "xmlCdata", "operation": "kinds", "expectedKindCode": "10", "expectedKindName": "국채" },
       { "fixture": "xmlAstralEntity", "operation": "kinds", "expectedKindCode": "10", "expectedKindName": "국채📈" },
-      { "fixture": "xmlNonrecursiveEntity", "operation": "kinds", "expectedKindCode": "10", "expectedKindName": "&lt;" }
+      { "fixture": "xmlNonrecursiveEntity", "operation": "kinds", "expectedKindCode": "10", "expectedKindName": "&lt;" },
+      { "fixture": "xmlStandaloneDeclaration", "operation": "kinds", "expectedKindCode": "10", "expectedKindName": "국채" }
     ],
     "invalid": [
       "xmlMalformedNesting",
@@ -79,6 +86,11 @@
       "xmlNestedColumn",
       "xmlDuplicateErrorCode",
       "xmlDuplicateErrorMessage",
+      "xmlNestedErrorMessage",
+      "xmlDeclarationDuplicateEncoding",
+      "xmlDeclarationUnknownAttribute",
+      "xmlDeclarationWrongOrder",
+      "xmlDeclarationNonXmlWhitespace",
       "xmlDuplicateDataset",
       "xmlDuplicateColumn"
     ]

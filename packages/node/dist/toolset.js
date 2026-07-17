@@ -577,9 +577,7 @@ async function postNexacroXml(endpoint, body, context = {}) {
 async function readBoundedUtf8Body(response) {
   const reader = response.body?.getReader?.();
   if (!reader) {
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    if (bytes.byteLength > MAX_RESPONSE_BODY_BYTES) throw oversizedResponseError();
-    return decodeUtf8(bytes);
+    throw new SourceResponseFormatError("KIS-NET response body does not support bounded streaming");
   }
 
   const chunks = [];
