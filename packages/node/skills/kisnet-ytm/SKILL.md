@@ -31,6 +31,7 @@ ytm matrix --base-date 2026-06-08 --kind 10 --format tsv
 - `kind` accepts either a source code or Korean label.
 - Exact-date behavior is the default: if KIS-NET returns no rows, the CLI fails with `source_data_unavailable` instead of silently changing the date.
 - Use `--fallback previous-available` only when the user wants the closest prior available date. It tries the requested date first, then walks backward; `--lookback-days` defaults to 10.
+- Do not retry fallback after `source_protocol_error`: nonzero Nexacro statuses, including positive warnings, fail closed and preserve `sourceErrorCode` and `sourceErrorMessage`.
 - JSON is the default and prints one JSON object. Use JSON for agent parsing; use CSV/TSV only when the user explicitly wants a table/export.
 - Failures print one JSON object and exit non-zero. Read `code`, `parameter`, `expected`, `recoveryHint`, and `recoveryAction` before retrying.
 

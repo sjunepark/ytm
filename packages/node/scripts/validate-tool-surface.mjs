@@ -88,6 +88,7 @@ for (const tenor of contract.expectations.missingValues.nullTenors) {
 
 for (const [fixtureName, expectedCode] of [
   ["unavailable", contract.expectations.unavailableError],
+  ["invalidErrorCode", contract.expectations.formatError],
   ["malformed", contract.expectations.formatError],
   ["invalidNumeric", contract.expectations.formatError],
   ["missingColumn", contract.expectations.formatError]
@@ -96,8 +97,41 @@ for (const [fixtureName, expectedCode] of [
     await toolset.execute("matrix", { baseDate: contract.request.baseDate, kind: contract.request.kind.name }, { fetch: fixtureFetch(fixtures[fixtureName]) });
     failures.push(`${fixtureName} fixture must throw ${expectedCode}`);
   } catch (error) {
-    check(toolset.serializeError(error).code === expectedCode, `${fixtureName} fixture must throw ${expectedCode}`);
+    const serialized = toolset.serializeError(error);
+    check(serialized.code === expectedCode, `${fixtureName} fixture must throw ${expectedCode}`);
+    if (fixtureName === "invalidErrorCode") {
+      check(serialized.reason.includes("invalid ErrorCode"), "invalidErrorCode fixture must fail on the malformed protocol status");
+    }
   }
+}
+
+for (const fixtureName of ["protocolError", "protocolWarning"]) {
+  const expected = contract.expectations.protocolStatuses[fixtureName];
+  try {
+    await toolset.execute("matrix", { baseDate: contract.request.baseDate, kind: contract.request.kind.name }, { fetch: fixtureFetch(fixtures[fixtureName]) });
+    failures.push(`${fixtureName} fixture must throw ${contract.expectations.protocolError}`);
+  } catch (error) {
+    const serialized = toolset.serializeError(error);
+    check(serialized.code === contract.expectations.protocolError, `${fixtureName} fixture must throw ${contract.expectations.protocolError}`);
+    check(serialized.sourceErrorCode === expected.errorCode, `${fixtureName} fixture must preserve ErrorCode`);
+    check(serialized.sourceErrorMessage === expected.errorMessage, `${fixtureName} fixture must preserve ErrorMsg`);
+  }
+
+  try {
+    await toolset.execute("kinds", { baseDate: contract.request.baseDate }, { fetch: () => xmlResponse(fixtures[fixtureName]) });
+    failures.push(`${fixtureName} kinds response must throw ${contract.expectations.protocolError}`);
+  } catch (error) {
+    const serialized = toolset.serializeError(error);
+    check(serialized.code === contract.expectations.protocolError, `${fixtureName} kinds response must throw ${contract.expectations.protocolError}`);
+    check(serialized.sourceErrorCode === expected.errorCode, `${fixtureName} kinds response must preserve ErrorCode`);
+    check(serialized.sourceErrorMessage === expected.errorMessage, `${fixtureName} kinds response must preserve ErrorMsg`);
+  }
+}
+
+for (const errorCode of ["00", "+0", "-0"]) {
+  const signedZeroFixture = fixtures.matrix.replace('<Parameter id="ErrorCode">0</Parameter>', `<Parameter id="ErrorCode">${errorCode}</Parameter>`);
+  const result = await toolset.execute("matrix", { baseDate: contract.request.baseDate, kind: contract.request.kind.name }, { fetch: fixtureFetch(signedZeroFixture) });
+  check(result.rows[0]?.pricingGroupCode === contract.expectations.matrix.pricingGroupCode, `ErrorCode ${errorCode} must remain a successful status`);
 }
 
 for (const fixtureName of ["initMalformedMixed", "initMalformedAll"]) {
@@ -113,7 +147,7 @@ try {
   await toolset.execute("matrix", { baseDate: contract.request.baseDate, kind: contract.request.kind.name }, { fetch: async () => { throw new TypeError("fixture transport failure"); } });
   failures.push("transport failure must throw source_transport_error");
 } catch (error) {
-  check(toolset.serializeError(error).code === contract.expectations.transportError, "transport failure must remain distinct from unavailable and malformed source data");
+  check(toolset.serializeError(error).code === contract.expectations.transportError, "transport failure must remain distinct from unavailable, protocol, and malformed source data");
 }
 
 const fallbackResult = await toolset.execute("matrix", { baseDate: "2026-06-07", kind: "국채", fallback: "previous-available", lookbackDays: 2 }, { fetch: fakeFallbackFetch });
@@ -121,6 +155,16 @@ check(fallbackResult.baseDate === "2026-06-05", "previous-available fallback mus
 check(fallbackResult.requestedBaseDate === "2026-06-07", "fallback result must preserve requestedBaseDate");
 check(fallbackResult.dateResolution.usedFallback === true, "fallback result must mark usedFallback");
 check(fallbackResult.dateResolution.attemptedDates.join(",") === "2026-06-07,2026-06-06,2026-06-05", "fallback result must record attempted dates");
+for (const fixtureName of ["protocolError", "protocolWarning"]) {
+  const attemptedDates = [];
+  try {
+    await toolset.execute("matrix", { baseDate: "2026-06-07", kind: "국채", fallback: "previous-available", lookbackDays: 2 }, { fetch: protocolFallbackFetch(fixtures[fixtureName], attemptedDates) });
+    failures.push(`${fixtureName} must stop previous-available fallback`);
+  } catch (error) {
+    check(toolset.serializeError(error).code === contract.expectations.protocolError, `${fixtureName} must stop previous-available fallback with its protocol error`);
+    check(attemptedDates.join(",") === "20260607", `${fixtureName} must not probe a prior date`);
+  }
+}
 try {
   await toolset.execute("matrix", { baseDate: "2026-06-07", kind: "국채", fallback: "previous-available", lookbackDays: 1 }, { fetch: fakeUnavailableFetch });
   failures.push("exhausted fallback must throw source_data_unavailable");
@@ -165,6 +209,16 @@ function fakeUnavailableFetch(url) {
     return xmlResponse(fixtures.init);
   }
   return xmlResponse(fixtures.unavailable);
+}
+
+function protocolFallbackFetch(protocolFixture, attemptedDates) {
+  return (url, init) => {
+    if (String(url).endsWith(contract.request.initEndpoint)) {
+      return xmlResponse(fixtures.init);
+    }
+    attemptedDates.push(/<Col id="calBaseDt">(\d+)<\/Col>/.exec(String(init?.body || ""))?.[1]);
+    return xmlResponse(protocolFixture);
+  };
 }
 
 function fixtureFetch(matrixFixture, capturedRequests = []) {

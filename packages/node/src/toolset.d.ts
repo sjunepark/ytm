@@ -17,13 +17,15 @@ export interface OperationSpec {
 
 export interface ValidationErrorDetails {
   ok: false;
-  code: "missing_parameter" | "invalid_parameter" | "unknown_parameter" | "invalid_request" | "source_data_unavailable" | "source_transport_error" | "source_format_error";
+  code: "missing_parameter" | "invalid_parameter" | "unknown_parameter" | "invalid_request" | "source_data_unavailable" | "source_transport_error" | "source_protocol_error" | "source_format_error";
   operationName?: string;
   parameter?: string;
   reason: string;
   expected?: unknown;
   actual?: unknown;
   exampleInput?: unknown;
+  sourceErrorCode?: string;
+  sourceErrorMessage?: string;
   recoveryHint: string;
   recoveryAction: "inspect_tool_help" | "inspect_command_help" | "use_previous_available_fallback" | "try_nearby_business_day";
   recoverable: boolean;

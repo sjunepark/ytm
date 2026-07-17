@@ -137,4 +137,6 @@ paths, tag routing, environment gates, artifact promotion, and OIDC publishing.
 To retry publication for an existing component tag without moving it, manually
 dispatch the corresponding workflow with that exact tag. Never create or move a
 tag by hand to repair a failed publication; fix the workflow and rerun the
-existing tag instead.
+existing tag instead. Manual dispatch resolves only the `refs/tags/` namespace,
+and every downstream validation or publication job uses the commit resolved by
+the metadata job rather than resolving the tag again.

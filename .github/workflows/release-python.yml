@@ -24,12 +24,14 @@ jobs:
     outputs:
       package_version: ${{ steps.package.outputs.package_version }}
       source_tag: ${{ steps.package.outputs.source_tag }}
+      source_sha: ${{ steps.package.outputs.source_sha }}
 
     steps:
       - name: Check out source
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+          persist-credentials: false
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.sha }}
 
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
@@ -51,6 +53,7 @@ jobs:
           else
             SOURCE_TAG="$GITHUB_REF_NAME"
           fi
+          SOURCE_SHA=$(git rev-parse HEAD)
 
           if [ "$PACKAGE_VERSION" != "$NODE_VERSION" ]; then
             echo "Python $PACKAGE_VERSION does not match Node $NODE_VERSION." >&2
@@ -63,6 +66,7 @@ jobs:
 
           echo "package_version=$PACKAGE_VERSION" >> "$GITHUB_OUTPUT"
           echo "source_tag=$SOURCE_TAG" >> "$GITHUB_OUTPUT"
+          echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
 
   python_validation:
     runs-on: ubuntu-latest
@@ -72,7 +76,8 @@ jobs:
       - name: Check out source
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
-          ref: ${{ needs.metadata.outputs.source_tag }}
+          persist-credentials: false
+          ref: ${{ needs.metadata.outputs.source_sha }}
 
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1

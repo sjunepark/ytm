@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Root xmlns="http://www.nexacroplatform.com/platform/dataset">
+  <Parameters><Parameter id="ErrorCode">not-an-integer</Parameter></Parameters>
+</Root>

@@ -62,6 +62,7 @@ ytm kinds [--base-date <기준일>] [--format json|csv|tsv] [--pretty]
 
 Successful matrices contain at least one row. Missing required columns and
 invalid numeric cells are `source_format_error`; network and HTTP failures are
-`source_transport_error`; confirmed empty matrices are
-`source_data_unavailable`. Previous-available probing continues only for
-`source_data_unavailable`.
+`source_transport_error`; nonzero Nexacro statuses, including positive
+warnings, are `source_protocol_error` and preserve `sourceErrorCode` and
+`sourceErrorMessage`; confirmed empty matrices are `source_data_unavailable`.
+Previous-available probing continues only for `source_data_unavailable`.
